@@ -107,3 +107,17 @@ Inspect the existing client entry, then rerun `anymessage mcp add NAME --replace
 Keep keys, application copies, signature records, databases, and debugger captures outside the repository.
 Do not upload them to issues or include them in a release archive.
 After confirming the original application is restored and the manifest is safely stored, remove temporary application copies you no longer need.
+
+## Read local attachments
+
+After reader setup, reload the client's MCP connection to expose all six tools.
+Call `get_messages`, then `list_attachments` and `read_attachment` with the returned message and attachment ids.
+Attachment reads reuse local files and keys.
+They do not start capture, restart WeChat, or download a missing cache variant.
+
+An encrypted `hardlink/hardlink.db` needs its own existing manifest entry for file lookup.
+An image without packed row metadata needs the key for `message/message_resource.db`.
+A ready `status` checks core conversation and message databases; attachment index and image-key failures are reported by the attachment tools.
+Supported V2 images also require one existing configuration that matches the selected account suffix.
+An absent or ambiguous match reports `image_key_required` without trying another account.
+See [attachment states and limits](attachments.md).

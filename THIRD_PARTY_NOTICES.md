@@ -16,7 +16,7 @@ Only explicit setup consent or manual invocation runs them.
 
 ## Runtime dependencies and external tools
 
-The Python package depends on the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk), [python-zstandard](https://github.com/indygreg/python-zstandard), and [TOMLKit](https://github.com/python-poetry/tomlkit).
+The Python package depends on the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk), [python-zstandard](https://github.com/indygreg/python-zstandard), [TOMLKit](https://github.com/python-poetry/tomlkit), [pypdf](https://github.com/py-pdf/pypdf), [Pillow](https://github.com/python-pillow/Pillow), and [cryptography](https://github.com/pyca/cryptography).
 Dependency versions and distribution hashes are recorded in `uv.lock`; each dependency retains its own license.
 SQLCipher is installed separately and retains [its own license](https://github.com/sqlcipher/sqlcipher/blob/master/LICENSE.md).
 WeChat is a separate proprietary application and is not distributed by this project.
@@ -24,3 +24,8 @@ WeChat is a separate proprietary application and is not distributed by this proj
 [REA](https://github.com/morluto/rea) was used for application research.
 [GreenBubbles](https://github.com/bojieli/greenbubbles) provided public database-format references.
 Neither is a runtime dependency, and their application code is not bundled here.
+
+The attachment reader uses pypdf under [BSD-3-Clause](https://github.com/py-pdf/pypdf/blob/main/LICENSE), Pillow under [its HPND notice](https://github.com/python-pillow/Pillow/blob/main/LICENSE), and cryptography under [its Apache-2.0 or BSD-3-Clause terms](https://github.com/pyca/cryptography/blob/main/LICENSE).
+These are ordinary dependencies, not vendored source files.
+The [wx-cli format references](https://github.com/pandorafuture/wx-cli/tree/2abe708f55bfe135539a385df856fdc58f97fc74/crates/wx-media) informed independent V2 image format research.
+No wx-cli source is copied, translated, or distributed here.
