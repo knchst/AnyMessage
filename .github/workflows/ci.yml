@@ -41,5 +41,7 @@ jobs:
         run: |
           uv venv "$RUNNER_TEMP/anymessage-wheel" --python "$PYTHON_VERSION"
           uv pip install --python "$RUNNER_TEMP/anymessage-wheel/bin/python" dist/*.whl
+          CHECKOUT="$PWD"
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/anymessage-wheel/bin/anymessage" --help
+          "$RUNNER_TEMP/anymessage-wheel/bin/python" "$CHECKOUT/scripts/check_installed.py"

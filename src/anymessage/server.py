@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
-import json
 from typing import Annotated, Any
 
 from mcp.server.fastmcp import FastMCP
@@ -13,9 +11,9 @@ from pydantic import Field
 from anymessage.wechat import WeChat
 
 
-def create_server() -> FastMCP:
+def create_server(*, port: int = 8765) -> FastMCP:
     sources = {"wechat": WeChat()}
-    server = FastMCP("AnyMessage", instructions="Read-only local messages. Call status first. Searches are bounded and conversation-scoped. A locked source requires local per-database keys.")
+    server = FastMCP("AnyMessage", host="127.0.0.1", port=port, instructions="Read-only local messages. Call status first. Searches are bounded and conversation-scoped. A locked source requires local per-database keys.")
     annotations = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
 
     @server.tool(annotations=annotations)
@@ -42,13 +40,9 @@ def create_server() -> FastMCP:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="AnyMessage read-only local messaging MCP")
-    parser.add_argument("--status", action="store_true", help="Print local source readiness and exit")
-    args = parser.parse_args()
-    if args.status:
-        print(json.dumps(WeChat().status(), ensure_ascii=False, indent=2))
-    else:
-        create_server().run(transport="stdio")
+    from anymessage.cli import main as cli_main
+
+    raise SystemExit(cli_main())
 
 
 if __name__ == "__main__":

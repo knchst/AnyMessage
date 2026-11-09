@@ -1,7 +1,3 @@
 [mcp_servers.AnyMessage]
-command = "/absolute/path/to/AnyMessage/.venv/bin/anymessage"
-args = []
-
-[mcp_servers.AnyMessage.env]
-ANYMESSAGE_SQLCIPHER = "/absolute/path/to/sqlcipher"
-ANYMESSAGE_KEYS_FILE = "/absolute/path/private/anymessage/keys.json"
+command = "/absolute/path/bin/anymessage"
+args = ["mcp"]

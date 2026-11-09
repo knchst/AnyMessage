@@ -1,6 +1,6 @@
 [project]
 name = "anymessage"
-version = "0.1.0"
+version = "0.2.0"
 description = "Read-only local MCP access to macOS messaging applications, starting with WeChat."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,7 +13,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.13",
 ]
-dependencies = ["mcp==1.30.0", "zstandard>=0.23,<1"]
+dependencies = ["mcp==1.30.0", "zstandard>=0.23,<1", "tomlkit>=0.13,<1"]
 
 [project.scripts]
 anymessage = "anymessage.server:main"
@@ -32,6 +32,9 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/anymessage"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"tools/wechat-bootstrap" = "anymessage/vendor/wechat-bootstrap"
 
 [tool.hatch.build.targets.sdist]
 include = [
