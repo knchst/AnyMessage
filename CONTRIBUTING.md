@@ -51,7 +51,7 @@ The workflow does not publish packages or releases.
 ## Change code and documentation together
 
 Keep the MCP tool contract and the documentation consistent.
-Validate external values at their owning boundary and keep the current source implementation in one module unless another source needs a shared interface.
+Validate external values at their owning boundary and keep database access in `wechat.py` and attachment format handling in `attachments.py`.
 Preserve the read-only SQLCipher flags and explicit incomplete-search coverage.
 Document any supported schema change and add a synthetic behavior case that would fail without it.
 

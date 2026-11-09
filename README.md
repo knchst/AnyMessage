@@ -3,13 +3,13 @@
 Read local macOS messages from an AI agent through MCP.
 The first supported source is WeChat 4.x.
 
-AnyMessage provides a read-only stdio server for conversation listing, text history retrieval, and conversation-scoped search.
+AnyMessage provides a read-only stdio server for conversation listing, text history retrieval, conversation-scoped search, and local attachment reading.
 It reads local SQLCipher databases and committed WAL records without exporting a separate plaintext message archive.
 
 This project is an early implementation.
 The reader and optional key initialization have been exercised with WeChat 4.1.15 on Apple Silicon.
 Other versions require validation against their local schemas.
-There is no message sending, deletion, media decoding, or cloud-history synchronization.
+There is no message sending, deletion, or cloud-history synchronization.
 
 ## Install and set up
 
@@ -20,7 +20,7 @@ anymessage setup
 
 Homebrew installs Python and SQLCipher with AnyMessage.
 Setup reuses existing valid keys and registers Codex by default.
-It checks account selection and every supported database before saving configuration references.
+It checks account selection and the core conversation and message databases before saving configuration references.
 When several accounts exist, setup asks you to choose one.
 Restart or reload Codex's MCP connection after registration, then call `status`.
 
@@ -107,7 +107,7 @@ uv run anymessage setup --keys-file "/absolute/path/private/manifest.json"
 Checkout development needs Python 3.11 or later and [uv](https://docs.astral.sh/uv/).
 The repository does not assume a published PyPI package.
 
-All four tools advertise read-only behavior.
+All six tools advertise read-only behavior.
 Call `status` first, then `list_conversations` to obtain a conversation id.
 
 | Tool | Inputs | Result |
@@ -116,6 +116,15 @@ Call `status` first, then `list_conversations` to obtain a conversation id.
 | `list_conversations` | `limit` 1–200, `offset` 0–100000 | Newest-first local conversations, display names, summaries, and `next_offset`. |
 | `get_messages` | `conversation_id`, `limit` 1–200, optional `cursor` | Newest-first local messages across supported message shards, with `next_cursor`. |
 | `search_messages` | Literal `query`, `conversation_id`, `limit` 1–200, `scan_limit` 1–10000, optional `cursor` | Decoded text matches, scanned count, coverage and continuation. |
+| `list_attachments` | `conversation_id`, `message_id` | Message-bound attachment descriptors, separate image variants, and local cache availability. |
+| `read_attachment` | `conversation_id`, `message_id`, `attachment_id`, optional `offset`, `limit`, `as_binary` | Verified document text, a native MCP image, or an embedded binary resource, with metadata and continuation. |
+
+`get_messages` also returns row-derived `attachments` metadata without looking up files.
+Call `list_attachments` with the message id to check availability, then pass its attachment id to `read_attachment`.
+PDF, DOCX, XLSX, PPTX, UTF-8 text, and BOM-marked UTF-16 text have bounded text views.
+Cached supported images return MCP image content; thumbnails are labeled separately from original and HD variants.
+`as_binary=true` returns bounded original file bytes or decoded image bytes.
+See [attachment formats, states, and limits](docs/attachments.md).
 
 Reuse returned cursors without editing them.
 Message identities include their shard and local id, so equal local ids in different shards remain distinct.
@@ -154,12 +163,17 @@ The manifest accepts this shape, with paths relative to `db_storage`:
   "keys": {
     "session/session.db": {"enc_key": "<64 hexadecimal characters>", "salt": "<32 hexadecimal characters>"},
     "contact/contact.db": {"enc_key": "<64 hexadecimal characters>"},
-    "message/message_0.db": {"enc_key": "<64 hexadecimal characters>"}
+    "message/message_0.db": {"enc_key": "<64 hexadecimal characters>"},
+    "hardlink/hardlink.db": {"enc_key": "<64 hexadecimal characters>"},
+    "message/message_resource.db": {"enc_key": "<64 hexadecimal characters>"}
   }
 }
 ```
 
 Each encrypted message shard needs its matching key entry.
+File attachments also need access to `hardlink/hardlink.db`.
+Images without a cache identity in the message row need `message/message_resource.db`.
+These attachment databases are checked on demand; a ready `status` does not establish attachment availability.
 The optional `salt` must match that database's first 16 bytes.
 An unwrapped database mapping is also accepted.
 Use an owner-only directory and run `chmod 600` on the manifest.
@@ -168,7 +182,10 @@ Never commit the manifest or real database files.
 ## Limits
 
 Only `message/message_N.db` message shards are supported.
-Business-account shards, media retrieval, group sender-prefix normalization, rich-message XML extraction, sending, and global history indexing are not implemented.
+Business-account shards, video and voice decoding, nested forwarded attachments, sending, and global history indexing are not implemented.
+Attachment metadata supports direct file app messages, including compressed and group-prefixed XML.
+Text history and search retain their existing text-only behavior; search does not scan attachment contents.
+Attachment reads use existing local caches and never download missing content.
 WeChat's retention and synchronization state determine which records exist locally.
 Queries spanning databases do not form one atomic snapshot.
 A missing key or unreadable supported shard fails history retrieval instead of silently returning partial history.
@@ -187,7 +204,7 @@ uv build
 python3 scripts/check_publication.py --archive dist/*.whl dist/*.tar.gz
 ```
 
-The default suite uses only synthetic data, including CLI onboarding, configuration preservation, stdio and loopback HTTP round trips, real SQLCipher-encrypted fixtures, compressed text, multiple shards, pagination ties, literal search, committed WAL reads, rejected writes, and official MCP client round trips.
+The default suite uses only synthetic data, including CLI onboarding, configuration preservation, stdio and loopback HTTP round trips, real SQLCipher-encrypted fixtures, compressed text, multiple shards, pagination ties, literal search, committed WAL reads, rejected writes, attachment integrity and path checks, document extraction, V2 image decoding, and native text, image, and binary results over both MCP transports.
 See [CONTRIBUTING.md](CONTRIBUTING.md), [the architecture](docs/architecture.md), and [the database research notes](docs/wechat-research.md).
 
 ## License

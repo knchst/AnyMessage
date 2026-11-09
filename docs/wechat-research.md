@@ -41,3 +41,34 @@ The pinned optional scripts in this repository were exercised separately from th
 They match candidates to database salts and verify the encrypted first-page HMAC before writing keys.
 Partial key coverage is possible; the MCP reader must still verify every supported shard it uses.
 Read [the setup guide](wechat-setup.md) for the manual procedure and its client-session effects.
+
+## Attachment records and local caches
+
+The direct file app-message shape is `appmsg/type=6` with a title, `appattach/totallen`, and `appattach/md5` or a parent `appmsg/md5` fallback.
+The nested digest takes precedence when both exist.
+Group XML can have a sender prefix before the document, and `compress_content` takes precedence over the body column.
+Nested forwarded app messages are not treated as attachments of the outer message.
+
+On the tested schema, `hardlink/hardlink.db` contains `file_hardlink_info_v4(md5, file_name, file_size, dir1, dir2, ...)`.
+The directory ids refer to `dir2id.rowid`, whose `username` values form cache path components beneath `msg/file`.
+Private read-only checks matched file messages to this index and verified the cached bytes' size and digest.
+Those checks establish the sampled format, not universal compatibility with other WeChat builds.
+
+Image message `packed_info_data` field 3, nested field 4, contains a hexadecimal cache basename on the tested schema.
+The fallback `MessageResourceInfo.packed_info` field 2, nested field 1, agrees for the sampled records.
+The fallback is joined through `ChatName2Id` and constrained by message local and server ids.
+Image paths use `msg/attach/<MD5 conversation>/<local YYYY-MM>/Img/<basename>.dat`, `_h.dat`, or `_t.dat`.
+The sampled available image was a V2 JPEG thumbnail. Original and HD cache availability is independent.
+
+The public [wx-cli V2 format description and tests](https://github.com/pandorafuture/wx-cli/blob/2abe708f55bfe135539a385df856fdc58f97fc74/crates/wx-media/src/dat.rs) and [account key derivation](https://github.com/pandorafuture/wx-cli/blob/2abe708f55bfe135539a385df856fdc58f97fc74/crates/wx-media/src/key.rs) informed an independent format implementation.
+No source from that GPL project is bundled or translated into AnyMessage.
+The 15-byte V2 header declares AES and XOR regions.
+AnyMessage validates region bounds and PKCS#7 padding, keeps the middle region, and infers the JPEG XOR byte only when both footer bytes agree.
+An existing suffix-matched `app_data/radium/ilink` configuration supplies the account identity for image key derivation.
+A private in-memory probe independently decoded and verified the sampled thumbnail with Pillow.
+This does not establish V1, legacy XOR, WXGF, or arbitrary encrypted-image support.
+
+Document reading uses [pypdf text extraction](https://pypdf.readthedocs.io/en/stable/user/extract-text.html) and bounded Office ZIP/XML parsing.
+PDF extraction can require substantially more memory than the source bytes, so source-size limits and a worker timeout are not a strict memory guarantee.
+Image validation uses [Pillow image verification](https://pillow.readthedocs.io/en/stable/reference/Image.html).
+Private messages, attachment bytes, keys, and local validation locators remain outside the repository and distributions.

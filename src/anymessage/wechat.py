@@ -14,13 +14,9 @@ from typing import Any
 
 import zstandard
 
+from anymessage.attachments import Attachments, AttachmentRead, message_attachments
+from anymessage.errors import SourceError
 from anymessage.settings import Settings
-
-
-class SourceError(RuntimeError):
-    def __init__(self, code: str, message: str):
-        super().__init__(f"{code}: {message}")
-        self.code = code
 
 
 def sql_text(value: str) -> str:
@@ -232,12 +228,13 @@ class WeChat:
             columns = self.require_table(schema, table, self.message_columns, relative)
             self.require_table(schema, "Name2Id", {"user_name"}, relative)
             compressed = ",hex(m.compress_content) AS compressed_hex" if "compress_content" in columns else ",NULL AS compressed_hex"
+            packed = ",hex(m.packed_info_data) AS packed_hex" if "packed_info_data" in columns else ",NULL AS packed_hex"
             marker = ",m.WCDB_CT_message_content AS compression" if "WCDB_CT_message_content" in columns else ",NULL AS compression"
             predicate = ""
             if bound:
                 timestamp, sequence, shard, local_id = bound
                 predicate = f" WHERE (m.create_time, m.sort_seq, {sql_text(relative)}, m.local_id) < ({timestamp}, {sequence}, {sql_text(shard)}, {local_id})"
-            sql = f'SELECT m.local_id, m.server_id, m.local_type, m.sort_seq, m.real_sender_id, m.create_time, hex(m.message_content) AS body_hex, n.user_name AS sender{compressed}{marker} FROM "{table}" m LEFT JOIN Name2Id n ON n.rowid=m.real_sender_id{predicate} ORDER BY m.create_time DESC, m.sort_seq DESC, m.local_id DESC LIMIT {limit + 1}'
+            sql = f'SELECT m.local_id, m.server_id, m.local_type, m.sort_seq, m.real_sender_id, m.create_time, hex(m.message_content) AS body_hex, n.user_name AS sender{compressed}{marker}{packed} FROM "{table}" m LEFT JOIN Name2Id n ON n.rowid=m.real_sender_id{predicate} ORDER BY m.create_time DESC, m.sort_seq DESC, m.local_id DESC LIMIT {limit + 1}'
             for row in self.query(root, relative, sql, keys):
                 content = bytes.fromhex(row["body_hex"] or "")
                 compressed_body = bytes.fromhex(row["compressed_hex"] or "")
@@ -254,7 +251,8 @@ class WeChat:
                         content_state = "text"
                     except (UnicodeDecodeError, zstandard.ZstdError):
                         content_state = "decode_failed"
-                items.append({"source": self.source_id, "id": f"{relative}:{row['local_id']}", "conversation_id": conversation_id, "sender_id": row["sender"], "timestamp": int(row["create_time"]), "type": kind, "text": text, "content_state": content_state, "server_id": str(row["server_id"]), "_position": [int(row["create_time"]), int(row["sort_seq"]), relative, int(row["local_id"])]})
+                attachments, attachment_state = message_attachments(row, f"{relative}:{row['local_id']}", conversation_id)
+                items.append({"source": self.source_id, "id": f"{relative}:{row['local_id']}", "conversation_id": conversation_id, "sender_id": row["sender"], "timestamp": int(row["create_time"]), "type": kind, "text": text, "content_state": content_state, "server_id": str(row["server_id"]), "attachments": [item.metadata() for item in attachments], "attachment_state": attachment_state, "_position": [int(row["create_time"]), int(row["sort_seq"]), relative, int(row["local_id"])]})
         if not found:
             raise SourceError("conversation_not_found", "This conversation has no message table in the available local shards.")
         items.sort(key=lambda item: tuple(item["_position"]), reverse=True)
@@ -265,6 +263,32 @@ class WeChat:
             item["cursor"] = base64.urlsafe_b64encode(json.dumps({"conversation": conversation_id, "position": item["_position"]}).encode()).decode()
             del item["_position"]
         return {"items": items, "next_cursor": next_cursor, "shards_checked": len(shards), "coverage": "local_message_shards", "snapshot_consistency": "per_query"}
+
+    def attachment_context(self, conversation_id: str, message_id: str) -> Attachments:
+        match = re.fullmatch(r"(message/message_\d+\.db):([1-9]\d{0,18})", message_id)
+        if match is None:
+            raise SourceError("message_id_invalid", "Use a message id returned for this conversation.")
+        relative, local_id = match.groups()
+        root, keys = self.selected_root(), self.keys()
+        if relative not in self.shards(root):
+            raise SourceError("message_not_found", "The message shard is not available.")
+        table = "Msg_" + hashlib.md5(conversation_id.encode()).hexdigest()
+        schema = self.schema(root, relative, keys)
+        if table not in schema:
+            raise SourceError("message_not_found", "This message does not belong to the selected conversation.")
+        columns = self.require_table(schema, table, self.message_columns, relative)
+        compressed = ",hex(compress_content) AS compressed_hex" if "compress_content" in columns else ",NULL AS compressed_hex"
+        packed = ",hex(packed_info_data) AS packed_hex" if "packed_info_data" in columns else ",NULL AS packed_hex"
+        rows = self.query(root, relative, f'SELECT local_id,server_id,local_type,create_time,hex(message_content) AS body_hex{compressed}{packed} FROM "{table}" WHERE local_id={int(local_id)} LIMIT 2', keys)
+        if len(rows) != 1:
+            raise SourceError("message_not_found", "No unique message matches this conversation and message id.")
+        return Attachments(self, root, keys, conversation_id, rows[0], message_id)
+
+    def list_attachments(self, conversation_id: str, message_id: str) -> dict[str, Any]:
+        return self.attachment_context(conversation_id, message_id).list()
+
+    def read_attachment(self, conversation_id: str, message_id: str, attachment_id: str, offset: int = 0, limit: int = 20000, as_binary: bool = False) -> AttachmentRead:
+        return self.attachment_context(conversation_id, message_id).read(attachment_id, offset, limit, as_binary)
 
     def search_messages(self, query: str, conversation_id: str, limit: int = 20, scan_limit: int = 1000, cursor: str | None = None) -> dict[str, Any]:
         matches = []

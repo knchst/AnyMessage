@@ -1,7 +1,8 @@
 # AnyMessage architecture
 
 An agent calls a small MCP tool through stdio or an explicitly started loopback Streamable HTTP server.
-The tool selects the registered WeChat source and returns ordinary JSON results.
+The tool selects the registered WeChat source and returns structured metadata.
+Attachment reads also return native MCP text, image, or embedded binary content.
 The WeChat source owns account discovery, key validation, schema checks, SQLCipher queries, message decoding, and cross-shard ordering.
 SQLCipher receives fixed read-only SQL and the selected database key through stdin.
 
@@ -13,7 +14,9 @@ SQLCipher receives fixed read-only SQL and the selected database key through std
 | [GreenBubbles CLI wrapper](https://github.com/bojieli/greenbubbles) | Reuses a mature JSON query CLI and existing WeChat research. | Adds another product's CLI and schema contracts to every tool call. Still requires key initialization. | Kept as public schema evidence, not a runtime dependency. |
 | Accessibility tree | Could avoid database keys for visible content. | Local probing exposed menus and windows but no chat body on WeChat 4.1.15. Cannot establish history access. | Rejected for this build. |
 
-There is one owner for the current database format in `wechat.py`.
+`wechat.py` owns account and database access, history, and exact message rehydration.
+`attachments.py` owns immutable `AttachmentRef` values, row-derived metadata, attachment indexes, file checks, image decoding, and document extraction.
+`server.py` adapts attachment results to MCP content blocks.
 The `sources` registry in `server.py` identifies the implemented source without introducing an unused adapter hierarchy.
 Source status distinguishes account selection, installation prerequisites, key problems, schema incompatibility, and readiness.
 
@@ -77,3 +80,33 @@ Remote clients require a separately managed authenticated HTTPS proxy.
 Grok Bot runs on a hosted computer, so generated local Grok CLI configuration cannot connect it to Mac databases.
 
 The MCP server never invokes a debugger, re-signs an application, or restarts WeChat.
+
+## Bind attachments to a message
+
+`get_messages` derives attachment descriptors from its existing message rows.
+It does not open an attachment index or inspect the filesystem.
+File app messages use bounded XML decoding, preferring `compress_content` when present and removing a group sender prefix only for attachment XML.
+The history and search text representation does not change.
+
+Attachment calls validate the shard and local id, open only that shard, and re-read the exact row under the requested conversation table.
+Attachment ids include the conversation, message identity, server id, metadata, and variant.
+They grant no path access outside that rehydrated message.
+File resolution matches the message's name, digest, and size in `file_hardlink_info_v4` and resolves `dir1` and `dir2` through `dir2id`.
+It never searches a monthly directory by filename alone.
+Every file read verifies actual byte size and MD5 before returning content.
+MD5 identifies the cached WeChat file. It is not an authentication mechanism.
+
+Image identities come from the message's packed protobuf metadata or a resource-index row bound to the conversation, local id, and server id.
+Original, HD, and thumbnail cache paths are separate variants.
+No missing original is replaced silently by a thumbnail.
+A supported V2 cache uses an existing account-matched image configuration and strict AES padding validation, then Pillow verifies the image.
+The account identity and derived key remain in memory and never enter MCP metadata, saved settings, or diagnostics.
+
+Cache paths must resolve within the selected account's `msg` directory, including symlink targets.
+Image cache and image-key configuration paths also reject symlink redirects between variants or accounts.
+Availability checks report cache state without claiming content verification.
+Document extraction runs in a subprocess with a 20-second timeout and returns fixed failure states instead of parser diagnostics.
+It writes no plaintext archive, executes no macros or formulas, and follows no external relationship or download URL.
+Office extraction spends its character budget while reading paragraphs and cells, so repeated shared strings cannot expand the output beyond the cap.
+Text output has a separate extraction cap and character pagination.
+See [the exact limits](attachments.md).
