@@ -122,6 +122,33 @@ def test_file_read_and_pagination(source):
     assert reader.read_attachment(USER, message_id, item["id"]).metadata["state"] == "attachment_integrity_failed"
 
 
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-16"])
+def test_ansi_text_pagination_preserves_original_bytes(source, encoding):
+    data = "\x1b[32m成功 😀\x1b[0m\r\n\x1b[1;31m次の行\x1b[0m".encode(encoding)
+    expected = "成功 😀\r\n次の行"
+    reader, _, message_id = add_file(source, data, "color.log")
+    item = reader.list_attachments(USER, message_id)["items"][0]
+    first = reader.read_attachment(USER, message_id, item["id"], limit=4)
+    assert first.metadata["state"] == "ready"
+    assert first.metadata["content_verified"] is True
+    assert first.metadata["text_normalizations"] == ["ansi_csi_removed"]
+    assert first.metadata["total_characters"] == len(expected)
+    assert first.text == "成功 😀"
+    assert first.metadata["next_offset"] == 4
+    rest = reader.read_attachment(USER, message_id, item["id"], offset=first.metadata["next_offset"])
+    assert rest.text == "\r\n次の行"
+    assert rest.metadata["next_offset"] is None
+    binary = reader.read_attachment(USER, message_id, item["id"], as_binary=True)
+    assert binary.data == data
+    assert "text_normalizations" not in binary.metadata
+
+
+@pytest.mark.parametrize("control", ["\x1b", "\x1b[31", "\x1b]title\x07", "\x00", "\x01"])
+def test_unknown_text_controls_remain_unsupported(control):
+    result = extract_in_worker(("\x1b[32mcolored\x1b[0m" + control).encode())
+    assert result["state"] == "format_unsupported"
+
+
 def test_metadata_never_looks_up_cache(source, monkeypatch):
     reader, _, message_id = add_file(source)
     monkeypatch.setattr(Attachments, "path_for", lambda *_: pytest.fail("history resolved files"))

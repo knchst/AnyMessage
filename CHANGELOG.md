@@ -4,6 +4,7 @@
 
 - Add row-only attachment metadata to message history and two read-only MCP tools, `list_attachments` and `read_attachment`.
 - Verify message-bound local file identities and actual digest and size before reading content.
+- Read ANSI-colored Unicode logs with explicit text-normalization metadata while preserving original binary bytes.
 - Extract bounded PDF, DOCX, XLSX, PPTX, and Unicode text, with text continuation and explicit failure states.
 - Return native MCP image content for supported raw images and V2 caches using existing account-matched configuration, with separate original, HD, and thumbnail variants.
 - Return bounded original file bytes as embedded MCP resources and preserve metadata in both structured and text content.

@@ -352,6 +352,8 @@ class Attachments:
             metadata.update(
                 state=state, extraction_truncated=result.get("truncated", False), representation="text", offset=offset
             )
+            if "text_normalizations" in result:
+                metadata["text_normalizations"] = result["text_normalizations"]
             if state not in ("ready", "no_extractable_text"):
                 return AttachmentRead(metadata)
             text = result["text"]
@@ -489,6 +491,7 @@ def extract_document(data: bytes) -> dict[str, Any]:
     chunks: list[str] = []
     truncated = False
     length = 0
+    text_normalizations: list[str] = []
 
     def emit(value: str, separator: str = "\n") -> bool:
         nonlocal length, truncated
@@ -655,13 +658,19 @@ def extract_document(data: bytes) -> dict[str, Any]:
             text = data.decode(encoding)
         except UnicodeDecodeError:
             return {"state": "format_unsupported"}
+        text, removed = re.subn(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
+        if removed:
+            text_normalizations.append("ansi_csi_removed")
         if any(ord(char) < 32 and char not in "\n\r\t\f" for char in text):
             return {"state": "format_unsupported"}
         emit(text)
     else:
         return {"state": "format_unsupported"}
     text = "".join(chunks)
-    return {"state": "ready" if text.strip() else "no_extractable_text", "text": text, "truncated": truncated}
+    result = {"state": "ready" if text.strip() else "no_extractable_text", "text": text, "truncated": truncated}
+    if text_normalizations:
+        result["text_normalizations"] = text_normalizations
+    return result
 
 
 if __name__ == "__main__":

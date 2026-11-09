@@ -33,7 +33,7 @@ The content block preceding the metadata is one of:
 
 | Representation | MCP content | Behavior |
 | --- | --- | --- |
-| Document text | `TextContent` | `offset` and `limit` count Unicode characters. |
+| Document text | `TextContent` | `offset` and `limit` count normalized Unicode characters. |
 | Supported image | `ImageContent` | Verified JPEG, PNG, GIF, or WebP bytes. A thumbnail remains labeled `thumbnail`. |
 | `as_binary=true` | `EmbeddedResource` with `BlobResourceContents` | Complete original file bytes, or decoded image bytes for an image-cache attachment. |
 | Failure | Metadata text only | `isError=true` and an explicit state. |
@@ -42,6 +42,8 @@ Binary and image reads require `offset=0` and return complete bounded bytes.
 An embedded resource URI identifies the returned bytes. It is not a separate MCP resource endpoint or a filesystem URL.
 
 Text metadata includes `total_characters`, `offset`, `next_offset`, `truncated`, and `extraction_truncated`.
+Text views remove valid ANSI CSI escape sequences from Unicode text and report `text_normalizations: ["ansi_csi_removed"]` when present.
+Line endings remain unchanged, and binary reads preserve the original file bytes.
 Use `next_offset` unchanged for the next available text page.
 `truncated=true` covers either remaining text pages or an extraction cap.
 `extraction_truncated=true` means the parser stopped before all document content was extracted.
@@ -63,7 +65,7 @@ Filenames and extensions do not establish a supported format.
 | DOCX | Main document paragraphs and table text, in document order. Headers, footers, comments, and embedded objects are not extracted. |
 | XLSX | Worksheet names and cells in workbook order. Shared and inline strings and cached cell values are read. Formulas are not evaluated. |
 | PPTX | Slide text in presentation order. Notes, images, and embedded objects are not extracted. |
-| Text | UTF-8, optional UTF-8 BOM, and BOM-marked UTF-16, including CSV, JSON, and Markdown. Binary control characters are rejected. |
+| Text | UTF-8, optional UTF-8 BOM, and BOM-marked UTF-16, including CSV, JSON, Markdown, and ANSI-colored logs. Valid ANSI CSI sequences are removed from text views. Other escape sequences and binary control characters are rejected. |
 | Images | Raw JPEG, PNG, GIF, WebP, and supported V2 caches. V2 AES regions use existing configuration for the selected account, with strict padding. XOR tails require a validated JPEG footer. |
 | Other files | `format_unsupported` for the text view. `as_binary=true` can still return verified original bytes within the binary limit. |
 
