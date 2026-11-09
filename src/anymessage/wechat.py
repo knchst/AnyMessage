@@ -5,16 +5,16 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import os
 from pathlib import Path
 import plistlib
 import re
-import shutil
 import stat
 import subprocess
 from typing import Any
 
 import zstandard
+
+from anymessage.settings import Settings
 
 
 class SourceError(RuntimeError):
@@ -30,20 +30,12 @@ def sql_text(value: str) -> str:
 class WeChat:
     source_id = "wechat"
 
-    def __init__(self) -> None:
-        self.data_dir = Path(os.environ.get(
-            "ANYMESSAGE_DATA_DIR",
-            str(Path.home() / "Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files"),
-        )).expanduser().resolve()
-        self.account_id = os.environ.get("ANYMESSAGE_ACCOUNT")
-        key_file = os.environ.get("ANYMESSAGE_KEYS_FILE")
-        self.key_file = Path(key_file).expanduser() if key_file else None
-        self.executable = os.environ.get("ANYMESSAGE_SQLCIPHER") or shutil.which("sqlcipher")
-        if not self.executable:
-            for candidate in ("/opt/homebrew/opt/sqlcipher/bin/sqlcipher", "/usr/local/opt/sqlcipher/bin/sqlcipher"):
-                if Path(candidate).is_file():
-                    self.executable = candidate
-                    break
+    def __init__(self, settings: Settings | None = None) -> None:
+        settings = settings or Settings.load()
+        self.data_dir = settings.data_dir
+        self.account_id = settings.account
+        self.key_file = settings.keys_file
+        self.executable = settings.sqlcipher
 
     def accounts(self) -> list[tuple[str, Path]]:
         if self.data_dir.name == "db_storage" and self.data_dir.is_dir():

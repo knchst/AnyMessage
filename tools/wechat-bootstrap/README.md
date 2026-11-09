@@ -9,8 +9,9 @@ The original copyright and full license are preserved in [LICENSE](LICENSE).
 | `capture_keys.py` | `0b0b9f9296bf02219c07537827ed9ce97671611ffeab36572bedb267a7704d65` |
 | `LICENSE` | `72380798af61d6131287b0dd3c8dc5345535df641002fece3a02d7ef109c5f8e` |
 
-They are separate manual tools and are never imported or invoked by the MCP server.
-They are included in the source distribution, not in the installed runtime wheel.
+They are never imported or invoked by MCP tools.
+The source distribution includes these files, and the runtime wheel includes byte-identical subprocess resources with this license.
+`anymessage setup` invokes the wrapper only after explicit consent and verifies reader readiness before saving references.
 The temporary-copy procedure was exercised with WeChat 4.1.15 on Apple Silicon; other versions and platforms require separate validation.
 
 Read [the setup guide](../../docs/wechat-setup.md) before running them.
