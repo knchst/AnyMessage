@@ -40,6 +40,85 @@ def test_settings_precedence_and_private_references(source, monkeypatch):
     assert Settings.load().sqlcipher == reader.executable
 
 
+@pytest.mark.parametrize("selection", ["option", "environment", "saved"])
+def test_invalid_sqlcipher_selection_blocks_capture_without_default_fallback(tmp_path, monkeypatch, selection):
+    default = tmp_path / "sqlcipher"
+    default.write_text("#!/bin/sh\nexit 0\n")
+    default.chmod(0o700)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.delenv("ANYMESSAGE_SQLCIPHER", raising=False)
+    invalid = str(tmp_path / "missing-sqlcipher")
+    options = {}
+    if selection == "option":
+        options["sqlcipher"] = invalid
+    elif selection == "environment":
+        monkeypatch.setenv("ANYMESSAGE_SQLCIPHER", invalid)
+    else:
+        Settings.config_path().write_text(json.dumps({"version": 1, "sqlcipher": invalid}))
+    settings = Settings.load(data_dir=tmp_path / "missing-data", **options)
+    report = cli.doctor(settings)
+    assert settings.sqlcipher is None
+    assert not report.checks["sqlcipher"]
+    assert not report.source["sqlcipher_available"]
+    assert any("ANYMESSAGE_SQLCIPHER" in step and "saved" in step for step in report.next_steps)
+    report = replace(report, checks={name: name != "sqlcipher" for name in report.checks})
+    monkeypatch.setattr(cli.subprocess, "Popen", lambda *_args, **_kwargs: pytest.fail("Missing SQLCipher must block capture"))
+    with pytest.raises(ValueError, match="prerequisites are incomplete"):
+        cli.capture(settings, report, tmp_path / "capture")
+    assert not (tmp_path / "capture").exists()
+
+
+def test_sqlcipher_commands_resolve_to_absolute_executable_symlinks(tmp_path, monkeypatch):
+    binary = tmp_path / "cellar-sqlcipher"
+    binary.write_text("#!/bin/sh\nexit 0\n")
+    binary.chmod(0o700)
+    stable = tmp_path / "sqlcipher"
+    stable.symlink_to(binary)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.delenv("ANYMESSAGE_SQLCIPHER", raising=False)
+    assert Settings.load(sqlcipher="sqlcipher").sqlcipher == str(stable)
+    assert Settings.load(sqlcipher=str(stable)).sqlcipher == str(stable)
+    assert Settings.load().sqlcipher == str(stable)
+    binary.chmod(0o600)
+    assert Settings.load(sqlcipher=str(stable)).sqlcipher is None
+
+
+@pytest.mark.parametrize("dangling", [False, True])
+def test_settings_save_preserves_managed_symlink(tmp_path, dangling):
+    target = tmp_path / "managed.json"
+    original = b'{"version": 1}\n'
+    if not dangling:
+        target.write_bytes(original)
+    path = Settings.config_path()
+    path.symlink_to(target)
+    before = set(tmp_path.iterdir())
+    with pytest.raises(ValueError, match="symlink"):
+        Settings(tmp_path, None, None, None).save()
+    assert path.is_symlink() and path.readlink() == target
+    assert set(tmp_path.iterdir()) == before
+    assert not target.exists() if dangling else target.read_bytes() == original
+
+
+@pytest.mark.parametrize("client", CLIENTS)
+@pytest.mark.parametrize("replace_existing", [False, True])
+@pytest.mark.parametrize("dangling", [False, True])
+def test_registration_preserves_managed_symlink(client_home, client, replace_existing, dangling):
+    spec = CLIENTS[client]
+    path = spec.path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    target = client_home / "managed-config"
+    original = b'[mcp_servers.AnyMessage]\ncommand = "/old"\n' if spec.format == "toml" else b'{"mcpServers":{"AnyMessage":{"command":"/old"}}}\n'
+    if not dangling:
+        target.write_bytes(original)
+    path.symlink_to(target)
+    before = set(path.parent.iterdir())
+    with pytest.raises(ValueError, match="anymessage mcp config"):
+        register(client, replace=replace_existing)
+    assert path.is_symlink() and path.readlink() == target
+    assert set(path.parent.iterdir()) == before
+    assert not target.exists() if dangling else target.read_bytes() == original
+
+
 @pytest.mark.parametrize("client", CLIENTS)
 def test_registration_preserves_other_config_and_is_idempotent(client_home, client):
     spec = CLIENTS[client]
