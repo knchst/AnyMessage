@@ -2,20 +2,16 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   test:
-    runs-on: macos-15
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.11", "3.13"]
-    env:
-      PYTHON_VERSION: ${{ matrix.python }}
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -25,23 +21,22 @@ jobs:
           version: "0.13.3"
       - name: Install SQLCipher
         run: brew install sqlcipher
-      - name: Install Python and dependencies
+      - name: Test, audit, and smoke-test Python 3.11 and 3.13
         run: |
-          uv python install "$PYTHON_VERSION"
-          uv sync --locked --python "$PYTHON_VERSION" --group dev
-      - name: Test synthetic databases and MCP
-        run: uv run --frozen pytest -q
-      - name: Audit publication files and history
-        run: uv run --frozen python scripts/check_publication.py --history
-      - name: Build and audit distributions
-        run: |
-          uv build
-          uv run --frozen python scripts/check_publication.py --archive dist/*.whl dist/*.tar.gz
-      - name: Install and run the wheel outside the checkout
-        run: |
-          uv venv "$RUNNER_TEMP/anymessage-wheel" --python "$PYTHON_VERSION"
-          uv pip install --python "$RUNNER_TEMP/anymessage-wheel/bin/python" dist/*.whl
-          CHECKOUT="$PWD"
-          cd "$RUNNER_TEMP"
-          "$RUNNER_TEMP/anymessage-wheel/bin/anymessage" --help
-          "$RUNNER_TEMP/anymessage-wheel/bin/python" "$CHECKOUT/scripts/check_installed.py"
+          for python_version in 3.11 3.13; do
+            uv python install "$python_version"
+            uv sync --locked --python "$python_version" --group dev
+            uv run --frozen pytest -q
+            uv run --frozen python scripts/check_publication.py --history
+            uv build --python "$python_version"
+            uv run --frozen python scripts/check_publication.py --archive dist/*.whl dist/*.tar.gz
+            wheel_env="$RUNNER_TEMP/anymessage-wheel-$python_version"
+            uv venv "$wheel_env" --python "$python_version"
+            uv pip install --python "$wheel_env/bin/python" dist/*.whl
+            checkout="$PWD"
+            (
+              cd "$RUNNER_TEMP"
+              "$wheel_env/bin/anymessage" --help
+              "$wheel_env/bin/python" "$checkout/scripts/check_installed.py"
+            )
+          done
