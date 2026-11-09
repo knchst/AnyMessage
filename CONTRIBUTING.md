@@ -41,6 +41,8 @@ The publication check examines index blobs, working files, distribution members,
 It is a focused guard, not a general-purpose secret scanner.
 Review the final staged diff and history as well.
 `--require-noreply` can be combined with `--history` when preparing a history that must use GitHub noreply addresses; it is not required for contributors' chosen public identities.
+The check accepts user addresses at `users.noreply.github.com` and the exact GitHub service address `noreply@github.com` used for GitHub-generated commits.
+Other addresses at `github.com` fail this check.
 
 GitHub Actions runs the synthetic suite and package checks sequentially with Python 3.11 and 3.13 on one macOS 26 runner.
 It also installs the wheel into a separate environment and invokes its entry point outside the source checkout.
