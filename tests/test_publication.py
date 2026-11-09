@@ -83,10 +83,10 @@ def test_archive_members_are_audited(publication_repo, tmp_path, format):
     assert "history.db" in result.stdout
 
 
-def commit_fixture(root):
+def commit_fixture(root, author_email="fixture@example.invalid", committer_email="fixture@example.invalid"):
     env = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
-           "GIT_AUTHOR_NAME": "Audit Fixture", "GIT_AUTHOR_EMAIL": "fixture@example.invalid",
-           "GIT_COMMITTER_NAME": "Audit Fixture", "GIT_COMMITTER_EMAIL": "fixture@example.invalid"}
+           "GIT_AUTHOR_NAME": "Audit Fixture", "GIT_AUTHOR_EMAIL": author_email,
+           "GIT_COMMITTER_NAME": "Audit Fixture", "GIT_COMMITTER_EMAIL": committer_email}
     subprocess.run(["git", "-C", str(root), "add", "."], env=env, check=True)
     subprocess.run(["git", "-C", str(root), "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-qm", "Synthetic audit fixture"], env=env, check=True)
 
@@ -109,3 +109,20 @@ def test_noreply_policy_is_explicit(publication_repo):
     result = audit(publication_repo, "--history", "--require-noreply")
     assert result.returncode == 1
     assert "author or committer email" in result.stdout
+
+
+@pytest.mark.parametrize(("committer_email", "expected_code"), [
+    ("noreply@github.com", 0),
+    ("audit-fixture@users.noreply.github.com", 0),
+    ("12345+audit-fixture@users.noreply.github.com", 0),
+    ("human" + "@github.com", 1),
+    ("other-" + "noreply@github.com", 1),
+])
+def test_noreply_history_accepts_only_supported_addresses(publication_repo, committer_email, expected_code):
+    commit_fixture(publication_repo, "12345+audit-fixture@users.noreply.github.com", committer_email)
+    result = audit(publication_repo, "--history", "--require-noreply")
+    assert result.returncode == expected_code, result.stdout
+    if expected_code:
+        assert "author or committer email" in result.stdout
+    else:
+        assert "Publication check passed." in result.stdout

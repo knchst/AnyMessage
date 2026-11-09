@@ -15,7 +15,7 @@ import zipfile
 HOME_PATH = re.compile(rb"/(?:Users|home)/[^/\s\"'<>]+/")
 ACCOUNT_ID = re.compile(rb"\bwxid_(?!fixture\b)[A-Za-z0-9]{6,}\b")
 PRIVATE_KEY = re.compile(rb"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----")
-NOREPLY_EMAIL = re.compile(rb"(?:[0-9]+\+)?[A-Za-z0-9-]+@users\.noreply\.github\.com")
+NOREPLY_EMAIL = re.compile(rb"(?:(?:[0-9]+\+)?[A-Za-z0-9-]+@users\.noreply\.github\.com|noreply@github\.com)")
 PRIVATE_DIRS = {".git", ".venv", "private", "captures", ".wechat-local", ".audit", "__pycache__"}
 
 
