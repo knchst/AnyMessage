@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]
+    env:
+      PYTHON_VERSION: ${{ matrix.python }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.3"
+      - name: Install SQLCipher
+        run: brew install sqlcipher
+      - name: Install Python and dependencies
+        run: |
+          uv python install "$PYTHON_VERSION"
+          uv sync --locked --python "$PYTHON_VERSION" --group dev
+      - name: Test synthetic databases and MCP
+        run: uv run --frozen pytest -q
+      - name: Audit publication files and history
+        run: uv run --frozen python scripts/check_publication.py --history
+      - name: Build and audit distributions
+        run: |
+          uv build
+          uv run --frozen python scripts/check_publication.py --archive dist/*.whl dist/*.tar.gz
+      - name: Install and run the wheel outside the checkout
+        run: |
+          uv venv "$RUNNER_TEMP/anymessage-wheel" --python "$PYTHON_VERSION"
+          uv pip install --python "$RUNNER_TEMP/anymessage-wheel/bin/python" dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/anymessage-wheel/bin/anymessage" --help

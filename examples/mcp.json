@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "AnyMessage": {
+      "command": "/absolute/path/to/AnyMessage/.venv/bin/anymessage",
+      "args": [],
+      "env": {
+        "ANYMESSAGE_SQLCIPHER": "/absolute/path/to/sqlcipher",
+        "ANYMESSAGE_KEYS_FILE": "/absolute/path/private/anymessage/keys.json"
+      }
+    }
+  }
+}
