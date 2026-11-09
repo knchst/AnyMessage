@@ -34,11 +34,15 @@ class Settings:
                     raise ValueError(f"Invalid AnyMessage configuration field: {field}.")
         root = data_dir or os.environ.get("ANYMESSAGE_DATA_DIR") or saved.get("data_dir") or Path.home() / "Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files"
         key = keys_file or os.environ.get("ANYMESSAGE_KEYS_FILE") or saved.get("keys_file")
-        executable = sqlcipher or os.environ.get("ANYMESSAGE_SQLCIPHER") or saved.get("sqlcipher") or shutil.which("sqlcipher")
-        if not executable:
-            executable = next((str(path) for path in (
-                Path("/opt/homebrew/opt/sqlcipher/bin/sqlcipher"), Path("/usr/local/opt/sqlcipher/bin/sqlcipher"),
-            ) if path.is_file()), None)
+        selected = sqlcipher or os.environ.get("ANYMESSAGE_SQLCIPHER") or saved.get("sqlcipher")
+        if selected:
+            executable = shutil.which(os.path.expanduser(selected))
+        else:
+            executable = shutil.which("sqlcipher") or next((found for path in (
+                "/opt/homebrew/opt/sqlcipher/bin/sqlcipher", "/usr/local/opt/sqlcipher/bin/sqlcipher",
+            ) if (found := shutil.which(path))), None)
+        if executable:
+            executable = os.path.abspath(executable)
         return cls(Path(root).expanduser().resolve(), account or os.environ.get("ANYMESSAGE_ACCOUNT") or saved.get("account"), Path(key).expanduser().absolute() if key else None, executable)
 
     def save(self) -> None:
@@ -47,6 +51,8 @@ class Settings:
 
 
 def private_write(path: Path, text: str) -> None:
+    if path.is_symlink():
+        raise ValueError(f"Refusing to replace symlink configuration {path}. Edit its managed target manually.")
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     descriptor, temporary = tempfile.mkstemp(prefix="." + path.name + ".", dir=path.parent)
     with os.fdopen(descriptor, "w") as handle:

@@ -76,8 +76,10 @@ def test_sqlcipher_commands_resolve_to_absolute_executable_symlinks(tmp_path, mo
     stable.symlink_to(binary)
     monkeypatch.setenv("PATH", str(tmp_path))
     monkeypatch.delenv("ANYMESSAGE_SQLCIPHER", raising=False)
+    monkeypatch.chdir(tmp_path)
     assert Settings.load(sqlcipher="sqlcipher").sqlcipher == str(stable)
     assert Settings.load(sqlcipher=str(stable)).sqlcipher == str(stable)
+    assert Settings.load(sqlcipher=f"../{tmp_path.name}/sqlcipher").sqlcipher == str(stable)
     assert Settings.load().sqlcipher == str(stable)
     binary.chmod(0o600)
     assert Settings.load(sqlcipher=str(stable)).sqlcipher is None

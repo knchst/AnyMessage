@@ -25,7 +25,7 @@ Unused databases may remain outside its supported coverage.
 | `data_missing` | Log into the original WeChat client and verify that local history exists, or check `ANYMESSAGE_DATA_DIR`. |
 | `database_missing` | Check that the selected local data includes the required contact, session and message database files. |
 | `account_required` | Pass `setup --account ID` with an account id from `doctor --json`, or set `ANYMESSAGE_ACCOUNT`. |
-| `sqlcipher_missing` | Install SQLCipher or set `ANYMESSAGE_SQLCIPHER`. |
+| `sqlcipher_missing` | Install SQLCipher, or correct `ANYMESSAGE_SQLCIPHER` or the saved `sqlcipher` reference to an executable command or path. An invalid selection does not fall back to another installation. |
 | `key_missing` | Supply a private manifest with the required per-database entries. |
 | `key_file_permissions` | Set the manifest's permissions to 0600. |
 | `key_manifest_invalid` | Correct the manifest's JSON shape, relative paths, keys or salts. |

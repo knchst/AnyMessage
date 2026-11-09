@@ -40,6 +40,10 @@ Registration preserves unrelated settings, TOML comments, and JSON comments.
 An existing different AnyMessage entry requires `--replace` and gets a private backup before replacement.
 An identical entry is left untouched.
 `--replace` also permits setup to replace saved configuration references; it never overwrites key manifests.
+Setup and registration refuse to replace symlink configuration files, including dangling links, even with `--replace`.
+For a managed client configuration, run `anymessage mcp config --format toml` for Codex or Grok, or `anymessage mcp config --format json` for the JSON clients.
+Add the generated entry to the managed target manually.
+If AnyMessage's reference file is a symlink, edit its managed target manually or select a separate regular file with `ANYMESSAGE_CONFIG_FILE` before setup.
 
 If no usable keys exist, read [the first-time setup guide](docs/wechat-setup.md).
 Interactive setup asks for an existing manifest before offering temporary-copy capture.
@@ -125,6 +129,9 @@ Unsupported non-text records are counted separately.
 Setup stores path and account references in `~/Library/Application Support/AnyMessage/config.json`, with mode 0600.
 Key bytes stay in their private manifest.
 Settings resolve in this order: explicit setup options, environment variables, saved references, then defaults.
+SQLCipher commands and paths must resolve to executable files.
+An invalid explicit option, environment variable, or saved SQLCipher reference reports missing SQLCipher without falling back to another installation.
+Correct that selection before retrying setup or capture.
 `ANYMESSAGE_CONFIG_FILE` selects another reference file; generated client entries carry that override when set.
 Setup also recognizes an existing `wechat/keys.json` next to the reference file when no key path is configured.
 Changing environment variables in a terminal does not change an already running MCP client.
@@ -136,7 +143,7 @@ Run setup to save references or set the client's own environment explicitly.
 | `ANYMESSAGE_KEYS_FILE` | Private JSON manifest containing the selected account's per-database raw keys. |
 | `ANYMESSAGE_ACCOUNT` | Opaque account id returned by `status`, required when several accounts are discovered. |
 | `ANYMESSAGE_DATA_DIR` | Optional `xwechat_files` directory, account directory containing `db_storage`, or `db_storage` itself. |
-| `ANYMESSAGE_SQLCIPHER` | Optional SQLCipher executable path; otherwise use `PATH` or standard Homebrew locations. |
+| `ANYMESSAGE_SQLCIPHER` | Optional SQLCipher executable command or path; otherwise use `PATH` or standard Homebrew locations. |
 
 By default, account discovery uses `~/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files`.
 Keys are supplied through a local file, not MCP arguments or command-line key values.

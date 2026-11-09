@@ -53,7 +53,7 @@ def doctor(settings: Settings) -> DoctorReport:
     if source["state"] != "ready":
         steps.append(source.get("message", "Run anymessage setup to select an account and provide keys."))
     if not checks["sqlcipher"]:
-        steps.append("Install SQLCipher with brew install sqlcipher.")
+        steps.append("Install SQLCipher with brew install sqlcipher, or correct ANYMESSAGE_SQLCIPHER or the saved sqlcipher reference to an executable command or path.")
     if not developer_tools:
         steps.append("First-time capture needs Xcode command line tools. Install them yourself with xcode-select --install, then rerun doctor.")
     elif not lldb:
@@ -132,7 +132,7 @@ def setup(args: argparse.Namespace) -> int:
     accounts = source.accounts()
     if len(accounts) > 1 and not settings.account:
         if args.non_interactive or not sys.stdin.isatty():
-            raise ValueError("Several accounts were found. Run doctor for their ids, then pass --account ID.")
+            raise ValueError("Several accounts were found. Run anymessage doctor --json for their ids, then pass --account ID.")
         print("Choose the account whose local history you want to read:", file=sys.stderr)
         for index, (account, _) in enumerate(accounts, 1):
             print(f"  {index}. {account}", file=sys.stderr)

@@ -152,6 +152,8 @@ def configuration(format: str, *, client: str | None = None, command: str | None
 def register(client: str, *, replace: bool = False, command: str | None = None) -> RegistrationResult:
     spec = CLIENTS[client]
     path = spec.path()
+    if path.is_symlink():
+        raise ValueError(f"Refusing to replace symlink configuration {path}. Use anymessage mcp config to generate an entry, then edit its managed target manually.")
     original = path.read_text() if path.exists() else ("{}\n" if spec.format == "json" else "")
     parsed = tomlkit.parse(original) if spec.format == "toml" else json_document(original)[0]
     servers = parsed.get(spec.section, {})

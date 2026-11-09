@@ -45,6 +45,8 @@ The executable runs without a shell, and user strings become UTF-8 hexadecimal S
 The MCP boundary validates requested limits and string sizes.
 
 `Settings` resolves explicit setup options, environment variables, saved path references, and defaults once.
+It resolves the selected SQLCipher command or path to an absolute executable path while retaining symlinks.
+An invalid configured selection remains unavailable instead of falling back to another installed binary.
 `WeChat` consumes this typed configuration for CLI diagnostics and MCP calls.
 The private reference file contains no key bytes.
 `cli.py` owns interactive setup, read-only diagnostics, and the explicit capture subprocess boundary.
@@ -57,6 +59,9 @@ Codex and Grok use TOMLKit to preserve unrelated tables and comments.
 JSON registration validates a comment-aware token stream and replaces only the selected value or inserts one member.
 It preserves unrelated bytes and rejects duplicate keys or unsupported syntax before writing.
 A conflicting AnyMessage entry requires `--replace`; existing files get a mode-0600 backup, followed by an atomic private replacement.
+Registration rejects symlink destinations before backup or writing, including dangling links and `--replace` requests.
+Private reference writes also reject symlink destinations.
+Managed configuration targets require manual edits.
 Codex registration edits its TOML directly because delegating the write to its CLI can remove unrelated settings.
 Claude Code registration edits only the user-level `mcpServers` object in `~/.claude.json`.
 
