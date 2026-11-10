@@ -29,7 +29,7 @@ def create_server(*, port: int = 8765, demo_settings: Settings | None = None, te
     if demo_settings is not None:
         instructions += " This is a temporary fictional Atlas project dataset, not personal WeChat history."
     if telegram_export is not None:
-        instructions = "Read-only text from one immutable Telegram Desktop JSON export. Call status first. Searches require explicit conversations. Export coverage can be incomplete. Telegram media tools are unsupported. Restart to load changed export bytes."
+        instructions = "Read-only messages from one immutable Telegram Desktop JSON export. Call status first. Searches require explicit conversations and cover exported text, not attachment contents. Classic attachments read current local files beneath the selected export folder; content_verified stays false because no trusted Telegram digest is available. Export coverage can be incomplete. Restart to load changed JSON bytes."
     server = FastMCP("AnyMessage Demo" if demo_settings is not None else "AnyMessage", host="127.0.0.1", port=port, instructions=instructions)
     annotations = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
 
@@ -60,12 +60,12 @@ def create_server(*, port: int = 8765, demo_settings: Settings | None = None, te
 
     @server.tool(annotations=annotations)
     def list_attachments(conversation_id: Annotated[str, Field(min_length=1, max_length=512)], message_id: Annotated[str, Field(min_length=1, max_length=128)]) -> dict[str, Any]:
-        """Inspect attachment variants and local availability for one exact message. Cached bytes are verified only when read. Telegram export media is unsupported."""
+        """Inspect attachment variants and local availability for one exact message. WeChat checks cached bytes when read. Telegram classic variants report current export-folder availability without authenticating media."""
         return source.list_attachments(conversation_id, message_id)
 
     @server.tool(annotations=annotations)
     def read_attachment(conversation_id: Annotated[str, Field(min_length=1, max_length=512)], message_id: Annotated[str, Field(min_length=1, max_length=128)], attachment_id: Annotated[str, Field(min_length=32, max_length=32)], offset: Annotated[int, Field(ge=0, le=2000000)] = 0, limit: Annotated[int, Field(ge=1, le=100000)] = 20000, as_binary: bool = False) -> CallToolResult:
-        """Read verified local attachment text, an image, or original bytes. Text offsets count Unicode characters. Binary and image results require offset zero. No downloads or OCR. Telegram export media is unsupported."""
+        """Read local attachment text, an image, or explicit original bytes. Text offsets count Unicode characters. Binary and image results require offset zero. Check source-specific verification metadata; Telegram content_verified is always false. No downloads or OCR."""
         result = source.read_attachment(conversation_id, message_id, attachment_id, offset, limit, as_binary)
         structured = {**result.metadata, **({"text": result.text} if result.text is not None else {})}
         content: list[TextContent | ImageContent | EmbeddedResource] = []

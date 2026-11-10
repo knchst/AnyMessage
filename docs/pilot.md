@@ -13,7 +13,7 @@ You can use a fictional project before connecting your own data.
 Choose an AI client you already use and one of the [investigation recipes](recipes.md).
 Ask a question you would otherwise solve by reading the conversation yourself.
 Check whether the answer identifies the right approval, distinguishes an unconfirmed proposal, and lists missing evidence.
-Telegram supports exported text, not reading attachment contents.
+Telegram supports exported text and classic local attachment contents. Check whether the answer distinguishes readable files, omitted exports, missing files, and unverified media.
 Record what happened on your first attempt with the selected dataset, including failed setup and any individual help.
 Describe a later success separately so the first-attempt result stays accurate.
 If you return to your own data for a different investigation, report whether it happened within 14 days of that dataset's first real-data attempt.

@@ -48,12 +48,15 @@ async def main() -> None:
             raise ValueError("The bundled project and release versions disagree.")
         supports_context = tuple(int(part) for part in version.split(".")) >= (0, 6, 0)
         supports_export = tuple(int(part) for part in version.split(".")) >= (0, 7, 0)
+        supports_export_media = tuple(int(part) for part in version.split(".")) >= (0, 8, 0)
         expected_tools = {"status", "list_conversations", "get_messages", "search_messages", "list_attachments", "read_attachment"}
         if supports_context:
             expected_tools.add("get_message_context")
         required = {"README.md", "README.zh-CN.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "tools/wechat-bootstrap/LICENSE", "tools/wechat-bootstrap/bootstrap_keys.py", "tools/wechat-bootstrap/capture_keys.py", "uv.lock", "src/anymessage/server.py", "docs/demo.md", ".github/assets/demo.gif"}
         if supports_export:
             required.update(("src/anymessage/telegram_export.py", "docs/telegram-export.md", "examples/telegram-fictional.json"))
+        if supports_export_media:
+            required.update(("src/anymessage/telegram_media.py", "examples/river-spec-v2.txt"))
         if not required <= set(names):
             raise ValueError("The bundle is missing runtime, documentation, or license files.")
         print(f"Release pair matches {args.tag}, its manifest, and SHA-256.")
@@ -117,8 +120,21 @@ async def main() -> None:
                         assert context.structuredContent["items"][-1]["text"].startswith("Approved:")
                         assert context.structuredContent["snapshot_consistency"] == "immutable_export"
                         media = await client.call_tool("list_attachments", {"conversation_id": hit["conversation_id"], "message_id": "5"})
-                        assert media.structuredContent["items"] == [] and media.structuredContent["metadata_state"] == "unsupported"
-                print("Explicit Telegram export passed actual search-hit context and unsupported media with broken unrelated WeChat configuration.")
+                        if supports_export_media:
+                            assert media.structuredContent["items"][0]["state"] == "attachment_missing"
+                            expanded = await client.call_tool("get_message_context", {"conversation_id": hit["conversation_id"], "message_id": hit["id"], "before": 0, "after": 4})
+                            specification = expanded.structuredContent["items"][-1]
+                            assert specification["id"] == "6"
+                            listing = await client.call_tool("list_attachments", {"conversation_id": specification["conversation_id"], "message_id": specification["id"]})
+                            attachment = await client.call_tool("read_attachment", {"conversation_id": specification["conversation_id"], "message_id": specification["id"], "attachment_id": listing.structuredContent["items"][0]["id"]})
+                            assert not attachment.isError and attachment.content[0].type == "text"
+                            assert "Battery: 500 mAh" in attachment.content[0].text
+                            assert not attachment.structuredContent["content_verified"]
+                            assert attachment.structuredContent["media_consistency"] == "current_local_files"
+                        else:
+                            assert media.structuredContent["items"] == [] and media.structuredContent["metadata_state"] == "unsupported"
+                print("Explicit Telegram export passed actual search-hit context with broken unrelated WeChat configuration.")
+                print("Telegram specification bytes were read." if supports_export_media else "This older release reports unsupported Telegram media.")
 
 
 if __name__ == "__main__":

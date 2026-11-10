@@ -1,5 +1,6 @@
 # Investigate a fictional project
 
+For a key-free Telegram example with an actual specification TXT, use the [fictional River export](telegram-export.md#follow-a-fictional-search-hit-to-its-approval).
 Try AnyMessage without WeChat or account keys.
 The demo creates a temporary fictional Atlas project, then reads it through the same MCP tools used for live conversations.
 SQLCipher is required; an AI subscription is optional.

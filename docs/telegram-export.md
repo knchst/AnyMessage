@@ -1,6 +1,6 @@
 # Read a Telegram Desktop JSON export
 
-AnyMessage 0.7.0 reads text from one explicitly selected Telegram Desktop JSON file.
+AnyMessage 0.8.0 reads messages and classic local attachments from one explicitly selected Telegram Desktop JSON export.
 It supports conversation listing, dated history, selected-chat search, and exact-message context through the existing seven MCP tools.
 It does not need WeChat, SQLCipher, account keys, or saved WeChat configuration.
 This workflow has been verified on macOS through the MCP SDK. Other platforms and desktop-host export configuration have not been verified.
@@ -20,7 +20,7 @@ anymessage --version
 anymessage mcp --telegram-export "/absolute/path/to/result.json"
 ```
 
-The version must be 0.7.0 or later.
+Text and context require 0.7.0 or later; attachment reading requires 0.8.0 or later.
 The final command starts a stdio MCP server, which waits for a client rather than printing a conversation report.
 One process serves one selected file. Restart it to load a changed file or choose another export.
 An invalid explicit export fails startup with exit code 2 and a structural error on stderr.
@@ -29,6 +29,8 @@ It never falls back to WeChat.
 Combining `--telegram-export` with `mcp add/config` is rejected so registration cannot silently lose the selected file.
 
 The file must be a regular UTF-8 JSON file, optionally with a BOM, no larger than 16 MiB.
+The selected JSON filename must not be a symlink; pass the target's real filename. Parent directory aliases are resolved once.
+Keep exported media beside the JSON in the original relative folder layout.
 For a larger file, export one chat or a shorter period.
 The entire JSON file is decoded in memory at startup, and its decoded tree can use substantially more memory than the file size.
 Unrelated account sections pass through memory during parsing and are then discarded.
@@ -76,16 +78,17 @@ See [the security policy](../SECURITY.md) before configuring remote access.
 
 ## Follow a fictional search hit to its approval
 
-Download the [fictional River export](../examples/telegram-fictional.json). It contains no real account data or media bytes.
+Download the [fictional River export](../examples/telegram-fictional.json) and [specification TXT](../examples/river-spec-v2.txt) into the same folder. Both contain only fictional data.
 
 ```sh
 curl --fail --location https://raw.githubusercontent.com/knchst/AnyMessage/main/examples/telegram-fictional.json --output telegram-fictional.json
+curl --fail --location https://raw.githubusercontent.com/knchst/AnyMessage/main/examples/river-spec-v2.txt --output river-spec-v2.txt
 ```
 
 Use that file in the client configuration above.
 Ask your AI to use only this MCP connection:
 
-> Call status and list_conversations. Search for "proposal" in the River project conversation. Pass that hit's conversation_id and id to get_message_context with before=1 and after=2. Cite the proposal and its approval separately. Report whether the drawing can be read and whether the supplier confirmed November 26.
+> Call status and list_conversations. Search for "proposal" in the River project conversation. Pass that hit's conversation_id and id to get_message_context with before=1 and after=2. Cite the proposal and its approval separately. Then expand the same hit with after=4 to find specification message 6. List its attachments and read the returned file ID. Report the open thickness question, whether the drawing can be read, and whether the supplier confirmed November 26.
 
 The actual MCP tool calls are:
 
@@ -102,7 +105,9 @@ ID `2` proposes the 500 mAh battery. ID `4` approves it and retains the quantity
 ID `3` is a service record without invented text and still occupies a context position.
 The supplier conversation has a different qualified ID, `telegram:personal_chat:42`, even though its numeric chat ID and message ID overlap the project chat.
 Its ID `2` says the date remains unconfirmed.
-Drawing message `5` has a searchable caption, but its media listing reports `metadata_state="unsupported"` with no attachment IDs.
+Drawing message `5` has a searchable caption and an attachment ID, but `state="attachment_missing"` because that PDF is deliberately absent.
+Expanding the same hit with `after=4` includes message `6`; its specification TXT is readable and says the thickness awaits supplier confirmation.
+Pass the ID returned by `list_attachments` for message `6` to `read_attachment`. Successful text is returned as native MCP text with `content_verified=false`.
 
 To run the same evidence check directly through the MCP SDK, replace the executable path and run:
 
@@ -125,7 +130,14 @@ async def main():
             hit = search.structuredContent["items"][0]
             context = await client.call_tool("get_message_context", {"conversation_id": hit["conversation_id"], "message_id": hit["id"], "before": 1, "after": 2})
             assert [row["id"] for row in context.structuredContent["items"]] == ["1", "2", "3", "4"]
-            print(json.dumps(context.structuredContent, ensure_ascii=False, indent=2))
+            expanded = await client.call_tool("get_message_context", {"conversation_id": hit["conversation_id"], "message_id": hit["id"], "before": 0, "after": 4})
+            spec = expanded.structuredContent["items"][-1]
+            listing = await client.call_tool("list_attachments", {"conversation_id": spec["conversation_id"], "message_id": spec["id"]})
+            attachment = await client.call_tool("read_attachment", {"conversation_id": spec["conversation_id"], "message_id": spec["id"], "attachment_id": listing.structuredContent["items"][0]["id"]})
+            assert not attachment.isError and "Battery: 500 mAh" in attachment.content[0].text
+            assert not attachment.structuredContent["content_verified"]
+            print(attachment.content[0].text)
+            print(json.dumps(attachment.structuredContent, ensure_ascii=False, indent=2))
 
 asyncio.run(main())
 PY
@@ -185,14 +197,63 @@ An exhausted search covers only searchable dated exported bodies, never complete
 
 ## Media
 
-Every exported message returns `attachments=[]`.
-`attachment_state="unsupported"` indicates a recognized media marker or opaque rich body.
-`attachment_state="none"` means no recognized media marker, not a verified filesystem state.
-Recognized markers include `photo`, `file`, `thumbnail`, `contact_vcard`, and `media_type`; their values are not exposed or followed.
+Classic dated messages expose independent descriptors for declared `photo`, `file`, `thumbnail`, and `contact_vcard` fields.
+A vCard is read as ordinary text or original bytes; its contacts are not parsed.
+`file_name` and `mime_type` are display declarations, never path or decoder authority.
+Opaque rich-message bodies and unsupported rows expose no IDs, including any top-level media sibling. A marker-only `media_type` remains unsupported.
+Search covers only message text and captions, not attachment contents.
 
-`list_attachments` first validates the exact message pair, then returns `items=[]`, `metadata_state="unsupported"`, and `media_declared`.
-That indicator is true or false for classic records and null for opaque rich content.
-`read_attachment` validates the same pair and returns a metadata-only MCP error with `state="unsupported"` and `content_verified=false`.
-The supplied attachment ID is not echoed as a found descriptor.
-Neither call resolves paths, checks file existence, reads local media, downloads content, or performs OCR.
-Actual media support is tracked separately in [Issue #29](https://github.com/knchst/AnyMessage/issues/29).
+History, search, and context expose the same IDs without accessing media.
+`attachment_state="available"` means descriptors exist; inspect each descriptor's `state` for availability.
+A safe relative locator starts at `not_checked`. Omission, unsafe-path, and unsupported-locator states are already known from JSON.
+No recognized media gives `attachment_state="none"` and an empty list.
+`list_attachments` validates the exact pair and checks current filesystem metadata, without reading file contents.
+Its `metadata_state` is `available` when descriptors exist, `unsupported` for opaque or marker-only media, and `none` for no media.
+`media_declared` is true or false for classic rows and null for opaque rich bodies.
+
+An ID is the first 32 lowercase hex characters of SHA-256 over the UTF-8 canonical JSON array `["telegram-export-attachment-v1", snapshot_sha256, qualified_chat_id, canonical_message_id, variant]`.
+Serialization uses `ensure_ascii=False` and compact separators. The canonical message ID is its decimal string.
+The ID is a descriptor identity, not a file hash. It binds every field through the JSON snapshot and resolves only within its exact message pair and variant.
+Byte-identical reloads preserve IDs. Changed JSON bytes invalidate old IDs after reload; copied identical JSON observes media in the newly selected folder.
+Unknown IDs return `attachment_not_found` before touching media, including on messages without descriptors.
+
+Paths must be nonempty relative POSIX paths under the selected JSON's resolved parent directory, with no empty, dot, or dot-dot components.
+Absolute paths, URLs, Windows drives, backslashes, controls, and invalid Unicode are refused.
+The reader performs no path expansion, percent decoding, basename search, guessed thumbnail lookup, or external fetch.
+Every component uses nonfollowing metadata checks. Symlinks, including internal or broken ones, and nonregular final objects are refused before opening.
+The folder must stay under your control during each read; there is no hostile concurrent-replacement guarantee.
+Originals and thumbnails have separate IDs and availability, and a missing original never returns thumbnail bytes.
+
+| State | Meaning |
+| --- | --- |
+| `not_checked` | JSON describes a safe relative locator; media has not been inspected. |
+| `available` | Listing found a regular local file; bytes have not been verified. |
+| `not_exported` | The classic writer emitted a known omission warning; `omission_reason` is `unavailable`, `file_type`, or `file_size`. No filesystem access occurs. |
+| `attachment_missing` | A referenced local component is absent. |
+| `attachment_path_invalid` | The locator is unsafe, a component is a symlink, an intermediate is not a directory, or the final object is not regular. |
+| `attachment_access_denied` | Local permissions or a read error prevent access. |
+| `unsupported` | A locator representation or warning variant is unsupported. Marker-only and opaque messages have no descriptors. |
+| `attachment_size_mismatch` | Complete observed bytes differ from a valid exported size, including zero. No content is returned. |
+| `attachment_too_large` | The source or requested output exceeds its byte limit. No partial bytes are returned. |
+
+Only the writer's three complete English warnings are recognized as omissions. Other `(File ...` warning forms remain unsupported nonlocators.
+Optional exported sizes accept nonnegative JSON integers; malformed values, including booleans, become unknown.
+A complete read within the source cap reports `local_size` and `local_sha256`, including on a declared-size mismatch.
+Oversized prefix reads report neither a complete local size nor a checksum.
+`declared_size` and `declared_mime` remain separate from those observations. MIME routing uses byte signatures, not the declaration or extension.
+Telegram supplies no trusted digest for these classic fields, so every result has `content_verified=false`, even with a matching size, valid image, or successful extraction.
+`snapshot_consistency="immutable_export"` refers only to loaded JSON. Status and attachment results use `media_consistency="current_local_files"`.
+Media is reopened on each read; a changed file can produce new text or a new local hash without changing its descriptor ID.
+
+`read_attachment` returns supported UTF text, PDF, DOCX, XLSX, and PPTX text through the existing bounded document worker.
+Text uses Unicode-character `offset` and `limit`, `total_characters`, `next_offset`, `truncated`, and `extraction_truncated`.
+Images with supported signatures return native MCP ImageContent after image verification. Photo and thumbnail variants require valid image bytes.
+Set `as_binary=true` to return complete original bytes as an embedded MCP resource, including for images and unsupported audio or video formats.
+Images and binary output require offset zero. Unrecognized binary text extraction returns `format_unsupported`; parser failures retain the [existing attachment states](attachments.md).
+Failed reads of a listed attachment return metadata, without attachment text, image, or blob content.
+Request-validation and unknown-ID failures use standard MCP errors.
+
+Limits are 16 MiB source bytes, 8 MiB image or binary output, 25 million image pixels, and a 20-second document worker timeout.
+Document extraction retains its 2,000,000-character cap, XML, ZIP, and PDF limits described in [the attachment reference](attachments.md#limits-and-states).
+These bounds are not an operating-system memory quota.
+There is no OCR, audio or video decoding, macro execution, formula evaluation, ordinary archive expansion, download, or media write.

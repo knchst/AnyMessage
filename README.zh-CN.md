@@ -15,19 +15,21 @@ AI 负责分析，AnyMessage 返回消息、来源 ID、查询范围和支持的
 
 ## 先试一个虚构项目
 
-AnyMessage 0.7.0 新增无需账号密钥的 Telegram 文本读取。安装 [uv](https://docs.astral.sh/uv/getting-started/installation/) 后，可以下载[虚构 River 聊天](examples/telegram-fictional.json)并启动 MCP：
+AnyMessage 0.8.0 支持无需账号密钥的 Telegram 文本、上下文和本地附件读取。安装 [uv](https://docs.astral.sh/uv/getting-started/installation/) 后，可以把[虚构 River 聊天](examples/telegram-fictional.json)和[规格文件](examples/river-spec-v2.txt)下载到同一文件夹，再启动 MCP：
 
 ```sh
 curl --fail --location https://raw.githubusercontent.com/knchst/AnyMessage/main/examples/telegram-fictional.json --output telegram-fictional.json
+curl --fail --location https://raw.githubusercontent.com/knchst/AnyMessage/main/examples/river-spec-v2.txt --output river-spec-v2.txt
 uvx --from git+https://github.com/knchst/AnyMessage anymessage mcp --telegram-export "$PWD/telegram-fictional.json"
 ```
 
 这会启动 stdio MCP 服务器，需要在 AI 客户端中使用[完整手动配置](docs/telegram-export.md#connect-your-ai)。
 不需要安装微信或 SQLCipher，也不读取已保存的微信配置。
-先列出会话，在 River 项目中搜索 `proposal`，再读取命中的上下文，就能看到相邻的批准消息。
+先列出会话，在 River 项目中搜索 `proposal`，再读取命中的上下文，就能看到相邻的批准消息。继续查看消息 `6` 的附件列表，用返回的 ID 读取实际规格文本。
 自己的数据可在 Telegram Desktop 中选择导出聊天记录，格式选 JSON。
 文件上限为 16 MiB，整个 JSON 在启动时载入内存，修改文件后需重启服务器。
-当前只读取文本，不支持 Telegram 附件或 `rich_message` 正文；导出也不保证完整云端历史。
+经典导出的附件可读取受限的文档文本、原生图片或明确请求的原始字节。`rich_message` 正文仍不支持，导出也不保证完整云端历史。
+附件反映当前本地文件；没有可信的 Telegram 内容摘要，因此成功读取后 `content_verified` 仍为 `false`。
 Telegram 的 ID、游标与覆盖范围说明见[导出文档](docs/telegram-export.md)。
 
 以下是原有的微信演示。
@@ -95,9 +97,9 @@ anymessage doctor
 
 ## 当前支持范围
 
-- 默认数据源为微信 4.x；已验证的环境是 Apple Silicon 和微信 4.1.15，其他版本需要验证。0.7.0 也支持明确选择的 Telegram Desktop JSON 文本导出。
+- 默认数据源为微信 4.x；已验证的环境是 Apple Silicon 和微信 4.1.15，其他版本需要验证。0.8.0 也支持明确选择的 Telegram Desktop JSON 导出及本地附件。
 - 七个工具均为只读，支持会话列表、按时间范围分页读取消息、指定消息的上下文、在明确选择的 1–8 个会话内共享扫描额度的文本搜索，以及支持格式的本地附件读取。
-- 微信附件包括 PDF、DOCX、XLSX、PPTX 和 Unicode 文本；支持部分原始图片及 V2 图片缓存。Telegram 的附件工具返回明确的不支持状态，不打开媒体路径。
+- 微信附件包括 PDF、DOCX、XLSX、PPTX 和 Unicode 文本；支持部分原始图片及 V2 图片缓存。Telegram 经典导出支持同类文档文本、图片和明确请求的受限原始字节；不会自动下载文件，也不会认证媒体来源。
 - 未实现发送、删除、云端聊天同步、全会话搜索、语义搜索、OCR、语音和视频解码。
 - 本地不存在的附件不会自动下载；缩略图和原图分别标识。
 

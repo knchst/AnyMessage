@@ -53,7 +53,7 @@ def test_normalization_and_coverage(export):
     status = export.status()
     assert status["chat_count"] == 3 and status["dated_message_count"] == 10
     assert status["undated_unsupported_count"] == status["rich_message_count"] == 1
-    assert status["max_export_bytes"] == 16 * 1024 * 1024 and status["text_only"]
+    assert status["max_export_bytes"] == 16 * 1024 * 1024 and not status["text_only"]
     listing = export.list_conversations()
     assert [item["id"] for item in listing["items"]] == [GROUP, PERSON, "telegram:public_channel:-10"]
     assert listing["items"][-1]["updated_at"] is None
@@ -67,18 +67,19 @@ def test_normalization_and_coverage(export):
     assert rows["2"]["text"] == "" and rows["2"]["content_state"] == "text"
     assert rows["4"]["sender_id"] == "user-actor" and rows["4"]["sender_name"] == "Actor"
     assert rows["4"]["type"] == "service" and rows["4"]["text"] is None
-    assert rows["5"]["text"] == "caption river" and rows["5"]["attachment_state"] == "unsupported"
+    assert rows["5"]["text"] == "caption river" and rows["5"]["attachment_state"] == "available"
     assert rows["6"]["text"] is None and rows["6"]["unsupported_reason"] == "rich_message"
     assert rows["6"]["attachment_state"] == "unsupported"
     assert rows["7"]["content_state"] == rows["8"]["content_state"] == "unsupported_type"
-    assert all(row["attachments"] == [] and row["source"] == "telegram_export" and row["server_id"] == row["id"] for row in rows.values())
+    assert all(row["source"] == "telegram_export" and row["server_id"] == row["id"] for row in rows.values())
+    assert rows["5"]["attachments"][0]["state"] == "attachment_path_invalid"
     assert result["coverage"] == "telegram_desktop_json_export" and result["shards_checked"] == 0
     assert result["snapshot_consistency"] == "immutable_export" and result["undated_unsupported_count"] == 1
     assert "SECRET" not in json.dumps([status, listing, result])
     result["items"][0]["text"] = "mutated"
     result["items"][0]["attachments"].append({"fake": True})
     assert export.get_messages(GROUP)["items"][0]["text"] is None
-    assert export.get_messages(GROUP)["items"][0]["attachments"] == []
+    assert len(export.get_messages(GROUP)["items"][0]["attachments"]) == 1
 
 
 def test_bounded_pagination_matches_independent_order(export):
@@ -199,13 +200,13 @@ def test_media_calls_open_no_files(export, monkeypatch):
     monkeypatch.setattr(Path, "open", fail)
     monkeypatch.setattr(Path, "stat", fail)
     monkeypatch.setattr("builtins.open", fail)
-    for number, declared in (("1", False), ("5", True), ("6", None)):
+    for number, declared, state in (("1", False, "none"), ("5", True, "available"), ("6", None, "unsupported")):
         listing = export.list_attachments(GROUP, number)
-        assert listing["items"] == [] and listing["metadata_state"] == "unsupported"
+        assert listing["metadata_state"] == state
         assert listing["media_declared"] is declared
-        result = export.read_attachment(GROUP, number, "a" * 32)
-        assert result.metadata["state"] == "unsupported" and result.metadata["content_verified"] is False
-        assert "attachment_id" not in result.metadata and result.data is result.text is None
+        with pytest.raises(SourceError, match="attachment_not_found"):
+            export.read_attachment(GROUP, number, "a" * 32)
+    assert export.list_attachments(GROUP, "5")["items"][0]["state"] == "attachment_path_invalid"
     with pytest.raises(SourceError, match="message_not_found"):
         export.list_attachments(PERSON, "8")
 
@@ -319,4 +320,8 @@ def test_fictional_download_has_known_evidence():
     context = reader.get_message_context(hit["conversation_id"], hit["id"], before=1, after=2)
     assert [row["id"] for row in context["items"]] == ["1", "2", "3", "4"]
     assert context["items"][-1]["text"].startswith("Approved:")
-    assert reader.list_attachments(GROUP, "5")["metadata_state"] == "unsupported"
+    assert reader.list_attachments(GROUP, "5")["items"][0]["state"] == "attachment_missing"
+    spec = reader.list_attachments(GROUP, "6")["items"][0]
+    result = reader.read_attachment(GROUP, "6", spec["id"])
+    assert result.metadata["state"] == "ready" and "500 mAh" in result.text
+    assert not result.metadata["content_verified"]

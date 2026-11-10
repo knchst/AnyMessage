@@ -28,7 +28,8 @@ Construction validates one regular UTF-8 JSON file, optionally with a BOM, cappe
 The input cap does not bound process memory. The decoded JSON tree can occupy much more memory than its file.
 Both joined `chats.list` and `left_chats.list` are normalized; unrelated account sections are discarded.
 Each chat has a chronological tuple of frozen message records, an immutable numeric-ID-to-offset map, and a set of undated unsupported IDs.
-No media paths or raw JSON objects remain in those records.
+Each classic row also owns a tuple of frozen `ExportAttachment` descriptors; raw JSON objects are discarded.
+`telegram_media.py` normalizes relative, omitted, denied, and unsupported locators, binds descriptor IDs to the JSON snapshot and exact message variant, and owns local availability and reads.
 
 History bounds each selected chat with bisect and iterates backwards.
 Search merges at most eight selected iterators by descending `(timestamp, message_number, qualified_chat_id)` with one shared scan budget.
@@ -41,7 +42,10 @@ The seven input schemas and default installed launch arguments are unchanged.
 Classic text strings and flat entity arrays are searchable.
 Opaque `rich_message` bodies remain dated unsupported rows. Compact undated unsupported rows are counted outside chronology.
 Service sender identity comes only from `actor_id` and `actor`, without generating text from actions.
-Media tools validate the exact message pair and report unsupported without filesystem checks or reads.
+Media tools validate the exact message pair and descriptor ID before touching media.
+History, search, and context render JSON-only descriptors. Listing uses nonfollowing metadata checks; reads repeat resolution beneath the selected JSON parent.
+`telegram_media.py` reuses `AttachmentRead`, MIME detection, image validation, and the bounded document worker from `attachments.py`, without using the WeChat resolver.
+JSON stays immutable while media reflects current local files per read; local hashes and size checks never set Telegram `content_verified=true`.
 See [the export contract](telegram-export.md#source-contract) for coverage, identity, and result fields.
 
 ## Preserve WeChat message ordering and coverage
