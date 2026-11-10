@@ -41,6 +41,7 @@ If an API request fails, the script stops without recording an incomplete snapsh
 Use `--repo owner/name` and `--output PATH` to choose another repository or log.
 
 GitHub traffic covers a rolling 14-day window.
+Referrers include only the top 10 sources in that window.
 Overlapping window totals and daily unique counts cannot be added to obtain unique people across the whole campaign.
 Clones may include automation, and traffic does not establish installation, usage, or star attribution.
 The snapshot does not read message data, instrument the client, or schedule a background watcher.

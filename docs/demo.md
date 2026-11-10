@@ -4,7 +4,9 @@ Try AnyMessage without WeChat or account keys.
 The demo creates a temporary fictional Atlas project, then reads it through the same MCP tools used for live conversations.
 SQLCipher is required; an AI subscription is optional.
 
-The demo commands are available in the latest source, ahead of the current Homebrew release.
+The demo requires AnyMessage 0.4.0 or later.
+With that version installed, run `anymessage demo` or `anymessage demo --mcp` directly.
+The source commands below also work without installing AnyMessage globally.
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and SQLCipher, then run:
 
 ```sh

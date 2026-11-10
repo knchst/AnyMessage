@@ -27,7 +27,7 @@ There is no message sending, deletion, or cloud-history synchronization.
 
 The latest source includes a demo that reads fictional messages and an attachment through the real MCP tools.
 It needs SQLCipher, but no WeChat installation, account keys, or AI subscription.
-The current Homebrew release does not include these demo commands yet.
+The demo requires AnyMessage 0.4.0 or later; Homebrew 0.3.1 does not include these commands.
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run:
 
 ```sh
@@ -38,6 +38,7 @@ uvx --from git+https://github.com/knchst/AnyMessage anymessage demo
 The demo shows an approved battery change, an unconfirmed delivery date, and an unavailable drawing.
 It prints source evidence without calling an AI model.
 Connect your own AI with `uvx --from git+https://github.com/knchst/AnyMessage anymessage demo --mcp`.
+With AnyMessage 0.4.0 or later installed, run `anymessage demo` or `anymessage demo --mcp` directly.
 See [the walkthrough and MCP configuration](docs/demo.md).
 
 ## Install and set up
