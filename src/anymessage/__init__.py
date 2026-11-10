@@ -1,3 +1,3 @@
 """Local messaging sources exposed through MCP."""
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"

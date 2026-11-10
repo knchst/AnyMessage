@@ -1,12 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 - Include extracted attachment pages in structured MCP results so clients such as Claude Code can read the document text.
 - Add `anymessage demo` and `anymessage demo --mcp` with temporary encrypted fictional messages and attachments read through the production MCP tools.
 - Distinguish demo data in the server name, instructions, and status without loading saved account configuration.
 - Add a reproducible walkthrough covering an approved change, an unconfirmed proposal, a missing drawing, and incomplete search coverage.
 - Correct the security and module descriptions for explicit loopback Streamable HTTP support.
+- Add English and Chinese onboarding, three investigation recipes, a public trial form, and a maintainer command to record GitHub growth snapshots.
 
 ## 0.3.1
 

@@ -1,6 +1,6 @@
 [project]
 name = "anymessage"
-version = "0.3.1"
+version = "0.4.0"
 description = "Read-only local MCP access to macOS messaging applications, starting with WeChat."
 readme = "README.md"
 requires-python = ">=3.11"

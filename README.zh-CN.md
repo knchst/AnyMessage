@@ -17,7 +17,7 @@ AI 负责分析，AnyMessage 返回消息、来源 ID、查询范围和支持的
 
 演示使用临时生成的虚构聊天和附件，通过真实的 MCP 工具读取。
 需要 SQLCipher，不需要安装微信、获取账号密钥或订阅 AI 服务。
-演示命令目前在最新源码中，当前 Homebrew 发布版尚未包含。
+演示需要 AnyMessage 0.4.0 或更新版本；Homebrew 0.3.1 尚未包含这些命令。
 
 安装 [uv](https://docs.astral.sh/uv/getting-started/installation/) 后运行：
 
@@ -26,6 +26,7 @@ brew install sqlcipher
 uvx --from git+https://github.com/knchst/AnyMessage anymessage demo
 ```
 
+安装 AnyMessage 0.4.0 或更新版本后，也可以直接运行 `anymessage demo` 或 `anymessage demo --mcp`。
 终端演示只展示工具返回的证据，不调用 AI，也不自动生成分析结论。
 虚构的 Atlas 项目里有已批准的电池变更、尚未确认的交期和无法读取的图纸。
 
