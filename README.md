@@ -121,6 +121,7 @@ Call `status` first, then `list_conversations` to obtain a conversation id.
 
 `get_messages` also returns row-derived `attachments` metadata without looking up files.
 Call `list_attachments` with the message id to check availability, then pass its attachment id to `read_attachment`.
+Extracted document pages are available as native MCP text and in the structured result's `text` field.
 PDF, DOCX, XLSX, PPTX, UTF-8 text, and BOM-marked UTF-16 text have bounded text views.
 Cached supported images return MCP image content; thumbnails are labeled separately from original and HD variants.
 `as_binary=true` returns bounded original file bytes or decoded image bytes.
