@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
@@ -21,6 +22,83 @@ from anymessage.settings import Settings
 
 def sql_text(value: str) -> str:
     return "CAST(X'" + value.encode("utf-8").hex() + "' AS TEXT)"
+
+
+Position = tuple[int, int, str, int, int]
+ShardTables = list[tuple[str, list[tuple[int, str, set[str]]]]]
+
+
+def request_integer(name: str, value: int, minimum: int, maximum: int) -> None:
+    if type(value) is not int or not minimum <= value <= maximum:
+        raise SourceError("request_invalid", f"{name} must be an integer between {minimum} and {maximum}.")
+
+
+@dataclass(frozen=True)
+class MessageScope:
+    ids: tuple[str, ...]
+    start: int | None
+    end: int | None
+
+    @classmethod
+    def parse(cls, conversation_id: str | None, conversation_ids: list[str] | None, start_time: int | None, end_time: int | None) -> MessageScope:
+        if (conversation_id is None) == (conversation_ids is None):
+            raise SourceError("request_invalid", "Provide exactly one of conversation_id or conversation_ids.")
+        if conversation_ids is not None and (not isinstance(conversation_ids, list) or not 1 <= len(conversation_ids) <= 8):
+            raise SourceError("request_invalid", "conversation_ids must contain 1–8 explicit conversation ids.")
+        ids = [conversation_id] if conversation_ids is None else conversation_ids
+        if any(not isinstance(value, str) or not 1 <= len(value) <= 512 for value in ids):
+            raise SourceError("request_invalid", "Each conversation id must be a string of 1–512 characters.")
+        if len(set(ids)) != len(ids):
+            raise SourceError("request_invalid", "conversation_ids must not contain duplicate ids.")
+        for name, value in (("start_time", start_time), ("end_time", end_time)):
+            if value is not None:
+                request_integer(name, value, -(2**63), 2**63 - 1)
+        if start_time is not None and end_time is not None and start_time >= end_time:
+            raise SourceError("request_invalid", "start_time must be less than end_time.")
+        return cls(tuple(sorted(ids)), start_time, end_time)
+
+    def metadata(self) -> dict[str, Any]:
+        return {"conversation_ids": list(self.ids), "start_time": self.start, "end_time": self.end}
+
+    def cursor(self, digest: str, position: Position) -> str:
+        payload = {"conversation": self.ids[0], "position": position[:4]} if len(self.ids) == 1 and self.start is None and self.end is None else {"v": 2, "s": digest, "p": position}
+        return base64.urlsafe_b64encode(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()).decode("ascii")
+
+    def position(self, cursor: str | None, digest: str, shards: list[str]) -> Position | None:
+        if cursor is None:
+            return None
+        try:
+            if not isinstance(cursor, str) or not 1 <= len(cursor) <= 4096:
+                raise ValueError()
+            payload = json.loads(base64.b64decode(cursor.encode("ascii"), altchars=b"-_", validate=True))
+            if not isinstance(payload, dict):
+                raise ValueError()
+            if set(payload) == {"conversation", "position"}:
+                if len(self.ids) != 1 or self.start is not None or self.end is not None or payload["conversation"] != self.ids[0]:
+                    raise ValueError()
+                position = payload["position"]
+                if not isinstance(position, list) or len(position) != 4:
+                    raise ValueError()
+                position = [*position, 0]
+            else:
+                if set(payload) != {"v", "s", "p"} or type(payload["v"]) is not int or payload["v"] != 2 or payload["s"] != digest:
+                    raise ValueError()
+                position = payload["p"]
+            if not isinstance(position, list) or len(position) != 5:
+                raise ValueError()
+            if any(type(position[i]) is not int or not -(2**63) <= position[i] < 2**63 for i in (0, 1, 3, 4)):
+                raise ValueError()
+            if position[2] not in shards or not 0 <= position[4] < len(self.ids):
+                raise ValueError()
+            return tuple(position)
+        except (ValueError, TypeError) as error:
+            raise SourceError("cursor_invalid", "Use a cursor returned for this account, conversation selection, and time range.") from error
+
+
+@dataclass(frozen=True)
+class MessageWindow:
+    rows: list[tuple[Position, dict[str, Any]]]
+    more: bool
 
 
 class WeChat:
@@ -201,68 +279,84 @@ class WeChat:
 
     message_columns = {"local_id", "server_id", "local_type", "sort_seq", "real_sender_id", "create_time", "message_content"}
 
-    def get_messages(self, conversation_id: str, limit: int = 50, cursor: str | None = None) -> dict[str, Any]:
+    def _message_context(self, scope: MessageScope, cursor: str | None) -> tuple[Path, dict[str, dict[str, str]], ShardTables, Position | None, str]:
         root, keys = self.selected_root(), self.keys()
-        table = "Msg_" + hashlib.md5(conversation_id.encode()).hexdigest()
-        bound = None
-        if cursor:
-            try:
-                payload = json.loads(base64.urlsafe_b64decode(cursor.encode()))
-                if payload["conversation"] != conversation_id or len(payload["position"]) != 4:
-                    raise ValueError()
-                bound = payload["position"]
-                if not all(isinstance(v, int) and not isinstance(v, bool) for v in bound[:2]) or not isinstance(bound[2], str) or not isinstance(bound[3], int):
-                    raise ValueError()
-            except (ValueError, KeyError, TypeError) as error:
-                raise SourceError("cursor_invalid", "Use the next_cursor returned for this conversation.") from error
         shards = self.shards(root)
         if not shards:
             raise SourceError("database_missing", "No message/message_N.db shards were found.")
-        items = []
-        found = False
+        digest = hashlib.sha256(json.dumps([str(root), scope.ids, scope.start, scope.end], ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+        before = scope.position(cursor, digest, shards)
+        tables = [(rank, "Msg_" + hashlib.md5(identity.encode()).hexdigest()) for rank, identity in enumerate(scope.ids)]
+        selected: ShardTables = []
+        found = set()
         for relative in shards:
             schema = self.schema(root, relative, keys)
-            if table not in schema:
+            present = []
+            for rank, table in tables:
+                if table not in schema:
+                    continue
+                columns = self.require_table(schema, table, self.message_columns, relative)
+                self.require_table(schema, "Name2Id", {"user_name"}, relative)
+                present.append((rank, table, columns))
+                found.add(rank)
+            selected.append((relative, present))
+        missing = [identity for rank, identity in enumerate(scope.ids) if rank not in found]
+        if missing:
+            raise SourceError("conversation_not_found", "No message table was found for conversation ids: " + ", ".join(missing))
+        return root, keys, selected, before, digest
+
+    def _read_window(self, scope: MessageScope, root: Path, keys: dict[str, dict[str, str]], shard_tables: ShardTables, before: Position | None, limit: int) -> MessageWindow:
+        top: list[tuple[Position, dict[str, Any]]] = []
+        for relative, tables in shard_tables:
+            if not tables:
                 continue
-            found = True
-            columns = self.require_table(schema, table, self.message_columns, relative)
-            self.require_table(schema, "Name2Id", {"user_name"}, relative)
-            compressed = ",hex(m.compress_content) AS compressed_hex" if "compress_content" in columns else ",NULL AS compressed_hex"
-            packed = ",hex(m.packed_info_data) AS packed_hex" if "packed_info_data" in columns else ",NULL AS packed_hex"
-            marker = ",m.WCDB_CT_message_content AS compression" if "WCDB_CT_message_content" in columns else ",NULL AS compression"
-            predicate = ""
-            if bound:
-                timestamp, sequence, shard, local_id = bound
-                predicate = f" WHERE (m.create_time, m.sort_seq, {sql_text(relative)}, m.local_id) < ({timestamp}, {sequence}, {sql_text(shard)}, {local_id})"
-            sql = f'SELECT m.local_id, m.server_id, m.local_type, m.sort_seq, m.real_sender_id, m.create_time, hex(m.message_content) AS body_hex, n.user_name AS sender{compressed}{marker}{packed} FROM "{table}" m LEFT JOIN Name2Id n ON n.rowid=m.real_sender_id{predicate} ORDER BY m.create_time DESC, m.sort_seq DESC, m.local_id DESC LIMIT {limit + 1}'
-            for row in self.query(root, relative, sql, keys):
-                content = bytes.fromhex(row["body_hex"] or "")
-                compressed_body = bytes.fromhex(row["compressed_hex"] or "")
-                if compressed_body:
-                    content = compressed_body
-                kind = int(row["local_type"]) & 0xFFFFFFFF
-                text = None
-                content_state = "unsupported_type"
-                if kind == 1:
-                    try:
-                        if content.startswith(b"\x28\xb5\x2f\xfd"):
-                            content = zstandard.ZstdDecompressor().decompress(content, max_output_size=4 * 1024 * 1024)
-                        text = content.decode("utf-8")
-                        content_state = "text"
-                    except (UnicodeDecodeError, zstandard.ZstdError):
-                        content_state = "decode_failed"
-                attachments, attachment_state = message_attachments(row, f"{relative}:{row['local_id']}", conversation_id)
-                items.append({"source": self.source_id, "id": f"{relative}:{row['local_id']}", "conversation_id": conversation_id, "sender_id": row["sender"], "timestamp": int(row["create_time"]), "type": kind, "text": text, "content_state": content_state, "server_id": str(row["server_id"]), "attachments": [item.metadata() for item in attachments], "attachment_state": attachment_state, "_position": [int(row["create_time"]), int(row["sort_seq"]), relative, int(row["local_id"])]})
-        if not found:
-            raise SourceError("conversation_not_found", "This conversation has no message table in the available local shards.")
-        items.sort(key=lambda item: tuple(item["_position"]), reverse=True)
-        more = len(items) > limit
-        items = items[:limit]
-        next_cursor = base64.urlsafe_b64encode(json.dumps({"conversation": conversation_id, "position": items[-1]["_position"]}).encode()).decode() if more else None
-        for item in items:
-            item["cursor"] = base64.urlsafe_b64encode(json.dumps({"conversation": conversation_id, "position": item["_position"]}).encode()).decode()
-            del item["_position"]
-        return {"items": items, "next_cursor": next_cursor, "shards_checked": len(shards), "coverage": "local_message_shards", "snapshot_consistency": "per_query"}
+            branches = []
+            for rank, table, columns in tables:
+                compressed = "hex(m.compress_content)" if "compress_content" in columns else "NULL"
+                packed = "hex(m.packed_info_data)" if "packed_info_data" in columns else "NULL"
+                marker = "m.WCDB_CT_message_content" if "WCDB_CT_message_content" in columns else "NULL"
+                predicates = []
+                if scope.start is not None:
+                    predicates.append(f"m.create_time >= {scope.start}")
+                if scope.end is not None:
+                    predicates.append(f"m.create_time < {scope.end}")
+                if before is not None:
+                    timestamp, sequence, shard, local_id, chat_rank = before
+                    predicates.append(f"(m.create_time,m.sort_seq,{sql_text(relative)},m.local_id,{rank}) < ({timestamp},{sequence},{sql_text(shard)},{local_id},{chat_rank})")
+                predicate = " WHERE " + " AND ".join(predicates) if predicates else ""
+                branches.append(f'SELECT m.local_id,m.server_id,m.local_type,m.sort_seq,m.real_sender_id,m.create_time,hex(m.message_content) AS body_hex,n.user_name AS sender,{compressed} AS compressed_hex,{marker} AS compression,{packed} AS packed_hex,{rank} AS chat_rank FROM "{table}" m LEFT JOIN Name2Id n ON n.rowid=m.real_sender_id{predicate}')
+            sql = " UNION ALL ".join(branches) + f" ORDER BY create_time DESC,sort_seq DESC,local_id DESC,chat_rank DESC LIMIT {limit + 1}"
+            rows = self.query(root, relative, sql, keys)
+            top.extend(((int(row["create_time"]), int(row["sort_seq"]), relative, int(row["local_id"]), row["chat_rank"]), row) for row in rows)
+            top.sort(key=lambda item: item[0], reverse=True)
+            del top[limit + 1:]
+        return MessageWindow(top[:limit], len(top) > limit)
+
+    def _decode_message(self, scope: MessageScope, digest: str, position: Position, row: dict[str, Any]) -> dict[str, Any]:
+        content = bytes.fromhex(row["compressed_hex"] or row["body_hex"] or "")
+        kind = int(row["local_type"]) & 0xFFFFFFFF
+        text = None
+        content_state = "unsupported_type"
+        if kind == 1:
+            try:
+                if content.startswith(b"\x28\xb5\x2f\xfd"):
+                    content = zstandard.ZstdDecompressor().decompress(content, max_output_size=4 * 1024 * 1024)
+                text = content.decode("utf-8")
+                content_state = "text"
+            except (UnicodeDecodeError, zstandard.ZstdError):
+                content_state = "decode_failed"
+        conversation_id = scope.ids[position[4]]
+        message_id = f"{position[2]}:{position[3]}"
+        attachments, attachment_state = message_attachments(row, message_id, conversation_id)
+        return {"source": self.source_id, "id": message_id, "conversation_id": conversation_id, "sender_id": row["sender"], "timestamp": position[0], "type": kind, "text": text, "content_state": content_state, "server_id": str(row["server_id"]), "attachments": [item.metadata() for item in attachments], "attachment_state": attachment_state, "cursor": scope.cursor(digest, position)}
+
+    def get_messages(self, conversation_id: str, limit: int = 50, cursor: str | None = None, *, start_time: int | None = None, end_time: int | None = None) -> dict[str, Any]:
+        scope = MessageScope.parse(conversation_id, None, start_time, end_time)
+        request_integer("limit", limit, 1, 200)
+        root, keys, shards, before, digest = self._message_context(scope, cursor)
+        window = self._read_window(scope, root, keys, shards, before, limit)
+        items = [self._decode_message(scope, digest, position, row) for position, row in window.rows]
+        return {"items": items, "next_cursor": items[-1]["cursor"] if window.more else None, "shards_checked": len(shards), "coverage": "local_message_shards", "snapshot_consistency": "per_query", **scope.metadata()}
 
     def attachment_context(self, conversation_id: str, message_id: str) -> Attachments:
         match = re.fullmatch(r"(message/message_\d+\.db):([1-9]\d{0,18})", message_id)
@@ -290,23 +384,30 @@ class WeChat:
     def read_attachment(self, conversation_id: str, message_id: str, attachment_id: str, offset: int = 0, limit: int = 20000, as_binary: bool = False) -> AttachmentRead:
         return self.attachment_context(conversation_id, message_id).read(attachment_id, offset, limit, as_binary)
 
-    def search_messages(self, query: str, conversation_id: str, limit: int = 20, scan_limit: int = 1000, cursor: str | None = None) -> dict[str, Any]:
+    def search_messages(self, query: str, conversation_id: str | None = None, limit: int = 20, scan_limit: int = 1000, cursor: str | None = None, *, conversation_ids: list[str] | None = None, start_time: int | None = None, end_time: int | None = None) -> dict[str, Any]:
+        scope = MessageScope.parse(conversation_id, conversation_ids, start_time, end_time)
+        if not isinstance(query, str) or not 1 <= len(query) <= 1000:
+            raise SourceError("request_invalid", "query must be a string of 1–1000 characters.")
+        request_integer("limit", limit, 1, 200)
+        request_integer("scan_limit", scan_limit, 1, 10000)
+        root, keys, shards, before, digest = self._message_context(scope, cursor)
         matches = []
-        scanned = 0
-        decode_failures = 0
-        unsupported_types = 0
-        next_cursor = cursor
-        while scanned < scan_limit and len(matches) < limit:
-            page = self.get_messages(conversation_id, limit=min(scan_limit - scanned, 200), cursor=next_cursor)
-            for index, message in enumerate(page["items"]):
+        scanned = decode_failures = unsupported_types = 0
+        next_cursor = None
+        needle = query.casefold()
+        while scanned < scan_limit:
+            window = self._read_window(scope, root, keys, shards, before, min(200, scan_limit - scanned))
+            for index, (position, row) in enumerate(window.rows):
+                message = self._decode_message(scope, digest, position, row)
                 scanned += 1
                 decode_failures += message["content_state"] == "decode_failed"
                 unsupported_types += message["content_state"] == "unsupported_type"
-                next_cursor = message["cursor"] if index < len(page["items"]) - 1 or page["next_cursor"] else None
-                if message["text"] is not None and query.casefold() in message["text"].casefold():
+                next_cursor = message["cursor"] if index + 1 < len(window.rows) or window.more else None
+                if message["text"] is not None and needle in message["text"].casefold():
                     matches.append(message)
-                if len(matches) == limit:
+                if len(matches) == limit or scanned == scan_limit:
                     break
-            if not next_cursor:
+            if not next_cursor or len(matches) == limit or scanned == scan_limit:
                 break
-        return {"items": matches, "scanned": scanned, "decode_failures": decode_failures, "unsupported_types": unsupported_types, "next_cursor": next_cursor, "truncated": bool(next_cursor), "incomplete": bool(next_cursor) or decode_failures > 0, "coverage": "decoded_local_text_in_one_conversation", "query": query}
+            before = window.rows[-1][0]
+        return {"items": matches, "scanned": scanned, "decode_failures": decode_failures, "unsupported_types": unsupported_types, "next_cursor": next_cursor, "truncated": next_cursor is not None, "incomplete": next_cursor is not None or decode_failures > 0, "coverage": "decoded_local_text_in_selected_conversations" if len(scope.ids) > 1 else "decoded_local_text_in_one_conversation", "query": query, "shards_checked": len(shards), "snapshot_consistency": "per_query", **scope.metadata()}

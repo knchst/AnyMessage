@@ -45,14 +45,58 @@ The brief should retain the approved 500 mAh battery and 50-unit quantity, ask f
 Compare these points with [the manual evidence table](demo.md#read-the-evidence).
 Suggested questions are the AI's recommendations; the cited messages establish the underlying open questions.
 
+## Search selected chats within a date range
+
+Find the two conversation ids through `list_conversations`, then pass them explicitly.
+AnyMessage 0.5.0 supports these MCP calls for the fictional demo:
+
+```json
+{"conversation_id":"atlas-demo@chatroom","start_time":1794182400,"end_time":1794268800}
+```
+
+Pass that object to `get_messages` to read November 9, 2026 UTC.
+To search both project and supplier chats that day, call `search_messages` with:
+
+```json
+{"query":"500","conversation_ids":["atlas-demo@chatroom","atlas-supplier-demo@chatroom"],"start_time":1794182400,"end_time":1794268800,"scan_limit":100}
+```
+
+The demo returns three matches across the two chats and excludes the supplier's November 10 follow-up.
+Use both `conversation_id` and `id` when citing each hit.
+Choose exactly one selector, either `conversation_id` or `conversation_ids` with 1–8 distinct ids.
+An empty list never means all chats. A missing local table fails the call.
+Search matches literal decoded text, not attachment bodies or semantic similarity.
+
+For a civil day in another timezone, convert local midnight and the next local midnight separately to UTC Unix seconds.
+This also handles days that last 23 or 25 hours:
+
+```python
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
+
+day = date(2026, 11, 1)
+zone = ZoneInfo("America/Los_Angeles")
+start_time = int(datetime.combine(day, time.min, zone).timestamp())
+end_time = int(datetime.combine(day + timedelta(days=1), time.min, zone).timestamp())
+```
+
+Pass integers rather than date strings, floating-point seconds, or booleans.
+The start is inclusive and the end is exclusive. Either bound may be absent.
+When both are present, start must be less than end.
+If `next_cursor` remains, repeat the call with that cursor, the original query, selection, and bounds.
+The selection order and page sizes may change.
+The cursor marks the last inspected row, even when it did not match.
+`scan_limit` is a shared budget across all selected chats; `scanned` and failure counters describe only the current call.
+An empty incomplete page requires continuation before drawing a conclusion about older messages.
+
 ## Verify the result
 
 Open the cited messages with `get_messages` and follow its returned cursor when more pages remain.
 Use `list_attachments` and `read_attachment` for the specific message, then check the returned availability and verification state.
-All abbreviated IDs in these examples use the prefix `message/message_0.db:` and conversation `atlas-demo@chatroom`.
-The fixture timestamps are UTC on 2026-11-09.
+Abbreviated IDs in the first three recipes use the prefix `message/message_0.db:` and conversation `atlas-demo@chatroom`.
+The first three recipes use the project's November 9 UTC messages; the supplier chat also has a November 10 follow-up.
 
-Current text search is bounded and conversation-scoped.
-There is no date-filter argument, semantic search, attachment-content search, or automatic cross-conversation search.
+Text search is bounded to the explicit selection and optional date range.
+There is no account-wide search, semantic search, or attachment-content search.
 Readiness does not establish that a local history or attachment set is complete.
 For private conversations, the AI client may send returned content to its model provider.

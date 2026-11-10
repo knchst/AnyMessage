@@ -14,7 +14,7 @@ Keep each host's actual installation results separate from these checks.
 
 ## Use the published bundle
 
-Download [AnyMessage 0.4.0 MCPB](https://github.com/knchst/AnyMessage/releases/download/v0.4.0/anymessage-0.4.0.mcpb) from the [release page](https://github.com/knchst/AnyMessage/releases/tag/v0.4.0).
+Download [AnyMessage 0.5.0 MCPB](https://github.com/knchst/AnyMessage/releases/download/v0.5.0/anymessage-0.5.0.mcpb) from the [release page](https://github.com/knchst/AnyMessage/releases/tag/v0.5.0).
 If you already configured AnyMessage, the bundle uses those saved account references.
 For a new account setup, read the [first-time setup guide](wechat-setup.md), then run:
 
@@ -31,6 +31,8 @@ After updating a bundle, restart or reconnect its MCP server before checking `st
 
 ## Build the release pair
 
+The commands below are a reproducible 0.4.0 example with its immutable source hash.
+For another release, use that version's reviewed archive, expected hash, tag, and a new output directory.
 Use Python 3.11 or later and the already published source archive.
 Obtain its expected SHA-256 from the reviewed release record.
 Use a new output directory; the builder refuses an existing directory.
@@ -63,6 +65,7 @@ Review the archive inventory and `server.json` before uploading.
 
 ## Publish the verified pair
 
+The commands below continue the reproducible 0.4.0 example.
 Upload exactly the reviewed pair to its existing release without overwriting assets:
 
 ```sh

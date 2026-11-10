@@ -29,6 +29,7 @@ uvx --from git+https://github.com/knchst/AnyMessage anymessage demo
 安装 AnyMessage 0.4.0 或更新版本后，也可以直接运行 `anymessage demo` 或 `anymessage demo --mcp`。
 终端演示只展示工具返回的证据，不调用 AI，也不自动生成分析结论。
 虚构的 Atlas 项目里有已批准的电池变更、尚未确认的交期和无法读取的图纸。
+AnyMessage 0.5.0 的终端演示还会读取指定 UTC 日期的消息，并同时搜索项目群和供应商群。
 
 | 事项 | 人工核对的结论 | 消息来源 |
 | --- | --- | --- |
@@ -77,13 +78,26 @@ anymessage doctor
 ## 当前支持范围
 
 - 当前数据源为微信 4.x；已验证的环境是 Apple Silicon 和微信 4.1.15，其他版本需要验证。
-- 支持会话列表、分页消息、单个会话内的有界文本搜索，以及支持格式的本地附件读取。
+- 支持会话列表、按时间范围分页读取消息、在明确选择的 1–8 个会话内共享扫描额度的文本搜索，以及支持格式的本地附件读取。
 - 文档包括 PDF、DOCX、XLSX、PPTX 和 Unicode 文本；支持部分原始图片及 V2 图片缓存。
 - 未实现发送、删除、云端聊天同步、全会话搜索、语义搜索、OCR、语音和视频解码。
 - 本地不存在的附件不会自动下载；缩略图和原图分别标识。
 
 先调用 `status`，再用 `list_conversations` 获取会话 ID。
+按时间范围读取与多会话搜索需要 AnyMessage 0.5.0 或更新版本。
+`get_messages` 接受一个 `conversation_id`。
+`search_messages` 必须且只能提供 `conversation_id` 或 `conversation_ids`，后者需要 1–8 个不重复的 ID，空列表不代表全部会话。
+两者都接受可选的 `start_time` 和 `end_time`，使用严格的 64 位 UTC Unix 秒整数，范围包含起点、不包含终点。
+同时提供两者时，起点必须小于终点。
+搜索使用解码后的文本做不区分大小写的字面匹配，不搜索附件正文。
+`limit` 为 1–200，`scan_limit` 为 1–10000，扫描额度在本次选择的全部会话间共享。
+消息引用和去重必须同时使用 `(conversation_id, id)`，因为不同会话中的消息 ID 可能相同。
+继续搜索时，保持原来的会话选择、日期范围和关键词，直接传回 `next_cursor`。
+带日期或多个会话的游标还绑定当前本地账号；无日期的单会话游标保留旧格式，无法校验账号身份。
 搜索结果如果有 `incomplete` 或继续游标，只代表已扫描的范围。
+`scanned` 统计本次实际检查的记录，包含不支持的消息类型和解码失败，不包含额外预取的记录。
+`conversation_ids`、`start_time` 和 `end_time` 返回本次范围；`snapshot_consistency="per_query"` 表示不同数据库分别读取已提交状态。
+日期转换和继续查询示例见[使用示例](docs/recipes.md#search-selected-chats-within-a-date-range)。
 未找到缓存不能单独证明附件已删除或已过期。
 
 读取在本机进行，但 AI 客户端可能把返回的内容发送给模型服务商。

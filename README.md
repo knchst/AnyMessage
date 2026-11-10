@@ -36,6 +36,7 @@ uvx --from git+https://github.com/knchst/AnyMessage anymessage demo
 ```
 
 The demo shows an approved battery change, an unconfirmed delivery date, and an unavailable drawing.
+AnyMessage 0.5.0 adds a UTC date range and searches the project and supplier chats together in the demo.
 It prints source evidence without calling an AI model.
 Connect your own AI with `uvx --from git+https://github.com/knchst/AnyMessage anymessage demo --mcp`.
 With AnyMessage 0.4.0 or later installed, run `anymessage demo` or `anymessage demo --mcp` directly.
@@ -140,13 +141,14 @@ The repository does not assume a published PyPI package.
 
 All six tools advertise read-only behavior.
 Call `status` first, then `list_conversations` to obtain a conversation id.
+Date bounds and selected-conversation search require AnyMessage 0.5.0 or later.
 
 | Tool | Inputs | Result |
 | --- | --- | --- |
 | `status` | None | Source installation, account selection, database inventory, keys and schema readiness. No message bodies. |
 | `list_conversations` | `limit` 1–200, `offset` 0–100000 | Newest-first local conversations, display names, summaries, and `next_offset`. |
-| `get_messages` | `conversation_id`, `limit` 1–200, optional `cursor` | Newest-first local messages across supported message shards, with `next_cursor`. |
-| `search_messages` | Literal `query`, `conversation_id`, `limit` 1–200, `scan_limit` 1–10000, optional `cursor` | Decoded text matches, scanned count, coverage and continuation. |
+| `get_messages` | `conversation_id`, `limit` 1–200, optional `cursor`, `start_time`, `end_time` | Newest-first local messages across supported message shards, with `next_cursor`. |
+| `search_messages` | Literal `query`, exactly one of `conversation_id` or `conversation_ids` with 1–8 distinct ids, `limit` 1–200, `scan_limit` 1–10000, optional `cursor`, `start_time`, `end_time` | Newest-first decoded text matches across the selection, shared scanned count, coverage, and continuation. |
 | `list_attachments` | `conversation_id`, `message_id` | Message-bound attachment descriptors, separate image variants, and local cache availability. |
 | `read_attachment` | `conversation_id`, `message_id`, `attachment_id`, optional `offset`, `limit`, `as_binary` | Verified document text, a native MCP image, or an embedded binary resource, with metadata and continuation. |
 
@@ -158,12 +160,28 @@ Cached supported images return MCP image content; thumbnails are labeled separat
 `as_binary=true` returns bounded original file bytes or decoded image bytes.
 See [attachment formats, states, and limits](docs/attachments.md).
 
-Reuse returned cursors without editing them.
-Message identities include their shard and local id, so equal local ids in different shards remain distinct.
+`start_time` and `end_time` are strict signed 64-bit UTC Unix-second integers, with an inclusive start and exclusive end.
+Either bound can be omitted; when both are present, start must be less than end.
+IDs contain 1–512 characters. Queries contain 1–1000 characters.
+An empty selection never means all conversations; a selected chat without a local message table fails the call.
+Results echo `conversation_ids`, `start_time`, and `end_time`.
+See [date ranges and selected chats](docs/recipes.md#search-selected-chats-within-a-date-range) for examples and local-day conversion.
+
+Reuse returned cursors without editing them, with the original selection, date bounds, and search query.
+Selection order and page sizes can change.
+Dated and multi-chat cursors bind the selected local account, chats, and bounds.
+Unbounded single-chat calls retain legacy cursors, which cannot verify account identity.
+Cursors mark a message position rather than a query; changing the query resumes at that position and leaves newer messages unsearched for the new query.
+Cite and deduplicate messages by the pair `(conversation_id, id)`.
+The `id` contains the shard and local id and can repeat in another chat.
 Search is case-insensitive literal matching after decoding; SQL wildcard characters remain literal.
+`scanned` counts inspected records across all selected chats, including unsupported records and decoding failures, for the current call.
+Raw lookahead rows do not count and are not decoded. Search does not inspect attachment bodies.
 `truncated=true` means more records remain beyond the current result or scan limit.
 `incomplete=true` also covers text decoding failures.
 Unsupported non-text records are counted separately.
+History and search report checked shards and `snapshot_consistency="per_query"`; separate databases can reflect separate committed states.
+Local decoded text coverage does not establish complete cloud history.
 
 ## Configuration
 
