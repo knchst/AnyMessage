@@ -1,5 +1,6 @@
 # Investigate your conversations with evidence
 
+For Telegram, select an export and keep its media layout intact. The [River walkthrough](telegram-export.md#follow-a-fictional-search-hit-to-its-approval) follows a proposal to approval and actual specification text; attachment reads remain unverified.
 Use these prompts with a local MCP client connected to AnyMessage.
 First try [the fictional Atlas project](demo.md), then use [normal setup](../README.md#install-and-set-up) for your own WeChat conversations.
 Your AI client performs the analysis; AnyMessage supplies messages and supported local attachments.

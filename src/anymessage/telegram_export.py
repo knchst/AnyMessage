@@ -14,6 +14,7 @@ from typing import Any, Iterator, Mapping
 
 from anymessage.attachments import AttachmentRead
 from anymessage.errors import SourceError
+from anymessage.telegram_media import ExportAttachment, classic_attachments
 
 
 MAX_EXPORT_BYTES = 16 * 1024 * 1024
@@ -23,7 +24,7 @@ _CHAT_TYPES = frozenset(("saved_messages", "replies", "verification_codes", "per
 _MEDIA_KEYS = frozenset(("photo", "file", "thumbnail", "contact_vcard", "media_type"))
 _STRUCTURED_KEYS = frozenset(("poll", "location_information", "place_name", "address", "contact_information", "game_title", "game_description", "game_link", "invoice_information", "todo_list", "giveaway_information", "giveaway_results"))
 _COVERAGE_NOTE = "Only this exported snapshot is available. Exports may be time-filtered; Telegram documents that public group and channel exports contain only the exporter's messages. Opaque rich_message bodies, media, and structured objects are not searched. Undated unsupported records are counted outside chronology."
-_MEDIA_NOTE = "Telegram media listing and reading are unsupported. No referenced paths are opened and no attachment bytes are verified."
+_MEDIA_NOTE = "Classic media uses current local files beneath the selected export folder. Exported sizes and local hashes do not establish Telegram authenticity."
 
 
 def _invalid(location: str, requirement: str) -> None:
@@ -76,6 +77,7 @@ class _Message:
     text: str | None
     media: bool
     unsupported_reason: str | None
+    attachments: tuple[ExportAttachment, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,7 +98,7 @@ class _Scope:
     digest: str
 
 
-def _chat(value: Any, location: str) -> _Chat:
+def _chat(value: Any, location: str, snapshot: str) -> _Chat:
     if not isinstance(value, dict):
         _invalid(location, "Expected a Chat object.")
     number = _number(value.get("id"), location + ".id")
@@ -157,7 +159,8 @@ def _chat(value: Any, location: str) -> _Chat:
             if not text and (message_type == "service" or media or _STRUCTURED_KEYS.intersection(message)):
                 text = None
                 reason = "service" if message_type == "service" else "media" if media else "structured_content"
-        rows.append(_Message(message_id, timestamp, message_type, sender_id, sender_name, text, media, reason))
+        attachments = () if reason in ("rich_message", "unsupported") else classic_attachments(message, snapshot, chat_id, message_id)
+        rows.append(_Message(message_id, timestamp, message_type, sender_id, sender_name, text, media, reason, attachments))
     ordered = tuple(sorted(rows, key=lambda row: (row.timestamp, row.number)))
     return _Chat(chat_id, name, kind, ordered, MappingProxyType({row.number: index for index, row in enumerate(ordered)}), frozenset(undated))
 
@@ -167,9 +170,11 @@ class TelegramExport:
 
     def __init__(self, path: Path) -> None:
         try:
-            metadata = path.stat()
+            self._root = path.parent.resolve(strict=True)
+            path = self._root / path.name
+            metadata = path.lstat()
             if not stat.S_ISREG(metadata.st_mode):
-                raise SourceError("export_unreadable", "Select a regular Telegram Desktop JSON file.")
+                raise SourceError("export_unreadable", "Select a regular Telegram Desktop JSON file without a filename symlink. Pass the target's real filename.")
             if metadata.st_size > MAX_EXPORT_BYTES:
                 raise SourceError("export_too_large", "JSON exceeds 16 MiB. Export one chat or a shorter period.")
             with path.open("rb") as handle:
@@ -194,7 +199,7 @@ class TelegramExport:
             _invalid("root", "Expected either a single Chat or account chats lists, without mixing them.")
         chats = {}
         if single:
-            chat = _chat(raw, "chat")
+            chat = _chat(raw, "chat", self._snapshot)
             chats[chat.id] = chat
         else:
             for section in ("chats", "left_chats"):
@@ -205,7 +210,7 @@ class TelegramExport:
                     _invalid(section + ".list", "Expected a chat list array.")
                 for index, value in enumerate(group["list"]):
                     location = f"{section}.list[{index}]"
-                    chat = _chat(value, location)
+                    chat = _chat(value, location, self._snapshot)
                     if chat.id in chats:
                         _invalid(location + ".id", "Duplicate qualified chat ID across selected lists.")
                     chats[chat.id] = chat
@@ -213,7 +218,7 @@ class TelegramExport:
         self._ordered = tuple(sorted(chats.values(), key=lambda chat: (not bool(chat.rows), -chat.rows[-1].timestamp if chat.rows else 0, chat.id)))
 
     def status(self) -> dict[str, Any]:
-        return {"source": self.source_id, "state": "ready", "coverage": "telegram_desktop_json_export", "coverage_note": _COVERAGE_NOTE, "snapshot_consistency": "immutable_export", "max_export_bytes": MAX_EXPORT_BYTES, "text_only": True, "chat_count": len(self._chats), "dated_message_count": sum(len(chat.rows) for chat in self._ordered), "undated_unsupported_count": sum(len(chat.undated) for chat in self._ordered), "rich_message_count": sum(row.unsupported_reason == "rich_message" for chat in self._ordered for row in chat.rows)}
+        return {"source": self.source_id, "state": "ready", "coverage": "telegram_desktop_json_export", "coverage_note": _COVERAGE_NOTE, "snapshot_consistency": "immutable_export", "media_consistency": "current_local_files", "max_export_bytes": MAX_EXPORT_BYTES, "text_only": False, "chat_count": len(self._chats), "dated_message_count": sum(len(chat.rows) for chat in self._ordered), "undated_unsupported_count": sum(len(chat.undated) for chat in self._ordered), "rich_message_count": sum(row.unsupported_reason == "rich_message" for chat in self._ordered for row in chat.rows)}
 
     def list_conversations(self, limit: int = 50, offset: int = 0) -> dict[str, Any]:
         _integer("limit", limit, 1, 200)
@@ -280,7 +285,7 @@ class TelegramExport:
         return heapq.merge(*(window(self._chats[chat_id]) for chat_id in scope.ids), key=lambda pair: (pair[1].timestamp, pair[1].number, pair[0].id), reverse=True)
 
     def _item(self, scope: _Scope, chat: _Chat, row: _Message) -> dict[str, Any]:
-        return {"source": self.source_id, "id": str(row.number), "conversation_id": chat.id, "sender_id": row.sender_id, "sender_name": row.sender_name, "timestamp": row.timestamp, "type": row.kind, "text": row.text, "content_state": "text" if row.text is not None else "unsupported_type", "unsupported_reason": row.unsupported_reason, "server_id": str(row.number), "attachments": [], "attachment_state": "unsupported" if row.media or row.unsupported_reason == "rich_message" else "none", "cursor": self._cursor(scope, chat, row)}
+        return {"source": self.source_id, "id": str(row.number), "conversation_id": chat.id, "sender_id": row.sender_id, "sender_name": row.sender_name, "timestamp": row.timestamp, "type": row.kind, "text": row.text, "content_state": "text" if row.text is not None else "unsupported_type", "unsupported_reason": row.unsupported_reason, "server_id": str(row.number), "attachments": [ref.describe() for ref in row.attachments], "attachment_state": "available" if row.attachments else "unsupported" if row.media or row.unsupported_reason == "rich_message" else "none", "cursor": self._cursor(scope, chat, row)}
 
     def _coverage(self, scope: _Scope) -> dict[str, Any]:
         return {"coverage": "telegram_desktop_json_export", "snapshot_consistency": "immutable_export", "shards_checked": 0, "conversation_ids": list(scope.ids), "start_time": scope.start, "end_time": scope.end, "undated_unsupported_count": sum(len(self._chats[chat_id].undated) for chat_id in scope.ids)}
@@ -344,12 +349,17 @@ class TelegramExport:
     def list_attachments(self, conversation_id: str, message_id: str) -> dict[str, Any]:
         chat, index, _ = self._exact(conversation_id, message_id)
         row = chat.rows[index]
-        return {"source": self.source_id, "conversation_id": conversation_id, "message_id": message_id, "items": [], "metadata_state": "unsupported", "media_declared": None if row.unsupported_reason == "rich_message" else row.media, "message": _MEDIA_NOTE}
+        return {"source": self.source_id, "conversation_id": conversation_id, "message_id": message_id, "items": [ref.describe(root=self._root) for ref in row.attachments], "metadata_state": "available" if row.attachments else "unsupported" if row.media or row.unsupported_reason == "rich_message" else "none", "media_declared": None if row.unsupported_reason == "rich_message" else row.media, "media_consistency": "current_local_files", "message": _MEDIA_NOTE}
 
     def read_attachment(self, conversation_id: str, message_id: str, attachment_id: str, offset: int = 0, limit: int = 20000, as_binary: bool = False) -> AttachmentRead:
-        self._exact(conversation_id, message_id)
+        chat, index, _ = self._exact(conversation_id, message_id)
         _integer("offset", offset, 0, 2000000)
         _integer("limit", limit, 1, 100000)
         if not isinstance(attachment_id, str) or len(attachment_id) != 32 or type(as_binary) is not bool:
             raise SourceError("request_invalid", "attachment_id must be a 32-character string and as_binary a boolean.")
-        return AttachmentRead({"state": "unsupported", "source": self.source_id, "conversation_id": conversation_id, "message_id": message_id, "content_verified": False, "message": _MEDIA_NOTE})
+        ref = next((ref for ref in chat.rows[index].attachments if ref.id == attachment_id), None)
+        if ref is None:
+            raise SourceError("attachment_not_found", "Use an attachment id returned for this exact message and export snapshot.")
+        result = ref.read(self._root, offset, limit, as_binary)
+        result.metadata.update(conversation_id=conversation_id, message_id=message_id)
+        return result

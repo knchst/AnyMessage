@@ -8,11 +8,16 @@ Explicitly starting Streamable HTTP binds a listener to `127.0.0.1` for clients 
 That listener has no application authentication and is reachable by other local processes.
 Remote access requires a separately managed authenticated HTTPS proxy; do not expose the listener directly to the internet.
 The default WeChat reader opens databases read-only and does not acquire keys or invoke the optional bootstrap scripts.
-Explicit Telegram export mode reads only the selected regular JSON file and retains an in-memory snapshot for the server lifetime.
+Explicit Telegram export mode retains an in-memory snapshot of the selected regular JSON file for the server lifetime.
 It bypasses saved WeChat settings, account discovery, and SQLCipher discovery.
 The file is capped at 16 MiB, but decoding and normalization can use substantially more memory.
 All selected file bytes, including unrelated account sections, briefly pass through memory before only chat records are retained.
-Telegram media paths are neither resolved nor opened. The attachment tools return unsupported results without verifying bytes.
+Classic Telegram attachments are read only beneath the resolved parent directory of the selected JSON file.
+The final JSON filename and every media path component reject symlinks. Explicit parent directory aliases are resolved once; pass a JSON symlink target's real filename.
+Absolute paths, URLs, Windows paths, escapes, and special files are refused without following their targets. No filename search or download occurs.
+Keep the export folder under your control during reads; this is not protection against hostile concurrent filesystem replacement.
+Media is checked per call and is not part of the immutable JSON snapshot. Exported lengths and local SHA-256 values do not authenticate Telegram content; `content_verified` stays false.
+Reads use the existing 16 MiB source, 8 MiB image or binary output, image-pixel, and document-worker bounds. See [the media contract](docs/telegram-export.md#media).
 The export is already plaintext. Keep real exports private and connect only a client you trust with their message bodies.
 
 Keep the key manifest outside the checkout, inside an owner-only directory, with file mode 0600.

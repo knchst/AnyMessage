@@ -17,7 +17,7 @@ Replay of the original 0.4.0 Atlas investigation. Playback timing is edited; thi
 
 AnyMessage provides a read-only stdio server for conversation listing, text history, exact-message context, conversation-scoped search, and local attachment reading.
 The default WeChat reader reads local SQLCipher databases and committed WAL records without creating a separate plaintext message archive.
-The Telegram reader reads one explicitly selected JSON file into an immutable text-only snapshot, without account keys or SQLCipher discovery.
+The Telegram reader reads one explicitly selected JSON file into an immutable JSON snapshot and reads supported attachments from its export folder, without account keys or SQLCipher discovery.
 
 This project is an early implementation.
 The reader and optional key initialization have been exercised with WeChat 4.1.15 on Apple Silicon.
@@ -26,22 +26,24 @@ There is no message sending, deletion, or cloud-history synchronization.
 
 ## Try a Telegram export without keys
 
-AnyMessage 0.7.0 adds text search and exact-message context for Telegram Desktop JSON exports.
-Download the [fictional River export](examples/telegram-fictional.json) and run it with the latest source:
+AnyMessage 0.8.0 reads text, exact-message context, and local attachments from Telegram Desktop JSON exports.
+Download the [fictional River export](examples/telegram-fictional.json) and [specification](examples/river-spec-v2.txt) into the same folder and run it with the latest source:
 
 ```sh
 curl --fail --location https://raw.githubusercontent.com/knchst/AnyMessage/main/examples/telegram-fictional.json --output telegram-fictional.json
+curl --fail --location https://raw.githubusercontent.com/knchst/AnyMessage/main/examples/river-spec-v2.txt --output river-spec-v2.txt
 uvx --from git+https://github.com/knchst/AnyMessage anymessage mcp --telegram-export "$PWD/telegram-fictional.json"
 ```
 
 This starts a stdio MCP server. Connect an AI client using the [complete JSON or Codex TOML configuration](docs/telegram-export.md#connect-your-ai).
 It needs neither WeChat nor SQLCipher, account keys, or saved WeChat settings.
-Ask the client to search for `proposal` in the River project, then inspect that hit's neighboring records to find Maya's approval.
+Ask the client to search for `proposal` in the River project, then inspect that hit's neighboring records to find Maya's approval and the specification in message `6`. List that message's attachments and read the returned file ID.
 For your own data, export a chat as JSON in Telegram Desktop and select that file instead.
 
 The file limit is 16 MiB. The reader fully loads the JSON in memory and retains no open file handle.
 Restart the server to load changed bytes.
-Export coverage can be incomplete. Rich-message bodies and Telegram media are unsupported; attachment tools report that explicitly.
+Export coverage can be incomplete. Rich-message bodies remain unsupported. Classic exported documents, supported images, and explicit original bytes are readable within the [attachment limits](docs/telegram-export.md#media).
+Media reflects current local files, and `content_verified=false` because the export supplies no trusted content digest.
 See [export instructions, actual MCP calls, coverage, and limits](docs/telegram-export.md).
 
 ## Try a fictional project
@@ -173,8 +175,8 @@ Exact-message context requires AnyMessage 0.6.0 or later.
 | `get_messages` | `conversation_id`, `limit` 1–200, optional `cursor`, `start_time`, `end_time` | Newest-first messages from the selected source, with `next_cursor`. |
 | `get_message_context` | `conversation_id`, `message_id`, optional `before` and `after` 0–50 each, default 3 | Exact anchor and nearest surrounding local records, oldest first, with `anchor_index` and `has_more_before` / `has_more_after`. |
 | `search_messages` | Literal `query`, exactly one of `conversation_id` or `conversation_ids` with 1–8 distinct ids, `limit` 1–200, `scan_limit` 1–10000, optional `cursor`, `start_time`, `end_time` | Newest-first decoded text matches across the selection, shared scanned count, coverage, and continuation. |
-| `list_attachments` | `conversation_id`, `message_id` | WeChat attachment descriptors and local availability. Telegram returns an explicit unsupported result. |
-| `read_attachment` | `conversation_id`, `message_id`, `attachment_id`, optional `offset`, `limit`, `as_binary` | Verified WeChat attachment content. Telegram returns an unsupported error without opening media. |
+| `list_attachments` | `conversation_id`, `message_id` | Message-bound attachment descriptors and local availability for WeChat or classic Telegram exports. |
+| `read_attachment` | `conversation_id`, `message_id`, `attachment_id`, optional `offset`, `limit`, `as_binary` | Supported text, native images, or explicit bounded original bytes. Check source-specific verification metadata; Telegram stays unverified. |
 
 The following attachment, identity, cursor, and database details describe WeChat.
 Telegram uses the same input schemas with [source-specific identity, coverage, and cursor semantics](docs/telegram-export.md#source-contract).

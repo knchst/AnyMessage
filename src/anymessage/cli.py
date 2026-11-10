@@ -199,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
     mcp = commands.add_parser("mcp", help="Run the MCP server or manage local clients")
     mcp.add_argument("--transport", choices=("stdio", "streamable-http"), default="stdio")
     mcp.add_argument("--port", type=int, default=8765, help="Loopback HTTP port; default 8765")
-    mcp.add_argument("--telegram-export", type=Path, help="Read one Telegram Desktop JSON snapshot instead of WeChat; text only")
+    mcp.add_argument("--telegram-export", type=Path, help="Read one Telegram Desktop JSON export and local attachments instead of WeChat; no keys")
     actions = mcp.add_subparsers(dest="mcp_action")
     add = actions.add_parser("add", help="Register a local client")
     add.add_argument("client", choices=[*CLIENTS, "grokbot"])

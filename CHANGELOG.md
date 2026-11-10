@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0
+
+- Read classic Telegram exported files, photos, thumbnails, and vCards through message-, snapshot-, and variant-bound attachment IDs. Return supported document text, native images, or explicitly requested original bytes with existing limits and unchanged tool inputs.
+- Keep originals and thumbnails independent. Distinguish export omissions, missing local files, unsafe paths, size mismatches, and unsupported formats without downloading or searching for files.
+- Confine media to the selected export folder and reject symlinks, including the selected JSON filename. Existing JSON-symlink users must pass the target's real filename; parent directory aliases remain supported.
+- Report current local media, observed sizes, and local SHA-256 values without claiming Telegram authenticity. `content_verified` stays false and JSON retains its immutable snapshot semantics.
+- Add a downloadable fictional River specification and exercise actual attachment content in installed-wheel and version-aware MCPB checks. Preserve historical bundle checks and WeChat behavior.
+
 ## 0.7.0
 
 - Add explicit `mcp --telegram-export PATH` startup for key-free, text-only Telegram Desktop JSON snapshots without reading saved WeChat settings or discovering accounts or SQLCipher.

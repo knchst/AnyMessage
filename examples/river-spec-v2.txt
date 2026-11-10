@@ -1,0 +1,5 @@
+River specification v2 (fictional)
+Battery: 500 mAh, approved by Maya.
+Pilot quantity: 50 units.
+Thickness: awaiting confirmation from the supplier.
+Proposed delivery: November 26, not confirmed by the factory.

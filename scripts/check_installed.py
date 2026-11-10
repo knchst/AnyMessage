@@ -35,11 +35,19 @@ async def check_export(executable: str, export: Path, environment: dict[str, str
             assert status.structuredContent["sources"][0]["state"] == "ready"
             search = await client.call_tool("search_messages", {"query": "proposal", "conversation_id": "telegram:private_group:42"})
             hit = search.structuredContent["items"][0]
-            context = await client.call_tool("get_message_context", {"conversation_id": hit["conversation_id"], "message_id": hit["id"], "before": 0, "after": 1})
-            assert not context.isError and context.structuredContent["items"][-1]["text"] == "Approved."
+            context = await client.call_tool("get_message_context", {"conversation_id": hit["conversation_id"], "message_id": hit["id"], "before": 0, "after": 2})
+            assert not context.isError and context.structuredContent["items"][1]["text"] == "Approved."
             assert context.structuredContent["snapshot_consistency"] == "immutable_export"
-            media = await client.call_tool("read_attachment", {"conversation_id": hit["conversation_id"], "message_id": hit["id"], "attachment_id": "a" * 32})
-            assert media.isError and media.structuredContent["state"] == "unsupported" and not media.structuredContent["content_verified"]
+            specification = context.structuredContent["items"][-1]
+            listing = await client.call_tool("list_attachments", {"conversation_id": specification["conversation_id"], "message_id": specification["id"]})
+            assert listing.structuredContent["items"][0]["state"] == "available"
+            attachment = await client.call_tool("read_attachment", {"conversation_id": specification["conversation_id"], "message_id": specification["id"], "attachment_id": listing.structuredContent["items"][0]["id"]})
+            assert not attachment.isError and attachment.content[0].type == "text"
+            assert attachment.content[0].text == "Battery: 500 mAh. Thickness: awaiting confirmation."
+            assert not attachment.structuredContent["content_verified"]
+            assert attachment.structuredContent["local_sha256"] == hashlib.sha256(attachment.content[0].text.encode()).hexdigest()
+            assert attachment.structuredContent["media_consistency"] == "current_local_files"
+
 
 
 def main() -> None:
@@ -58,12 +66,14 @@ def main() -> None:
         assert not (Path(directory) / "config.json").exists()
         (Path(directory) / "config.json").write_text("unrelated broken WeChat configuration")
         export = Path(directory) / "fictional.json"
+        (Path(directory) / "spec.txt").write_text("Battery: 500 mAh. Thickness: awaiting confirmation.")
         export.write_text(json.dumps({"id": 42, "type": "private_group", "messages": [
             {"id": 1, "type": "message", "date_unixtime": "100", "text": "Proposal: new battery."},
             {"id": 2, "type": "message", "date_unixtime": "100", "text": "Approved."},
+            {"id": 3, "type": "message", "date_unixtime": "101", "text": "Specification attached.", "file": "spec.txt"},
         ]}))
         asyncio.run(check_export(executable, export, environment))
-    print("Installed CLI, unchanged bootstrap resources, and key-free export MCP context passed.")
+    print("Installed CLI, unchanged bootstrap resources, and key-free export MCP approval and actual specification text passed.")
 
 
 if __name__ == "__main__":

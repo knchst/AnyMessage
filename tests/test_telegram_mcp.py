@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from contextlib import asynccontextmanager
 import json
 import os
@@ -18,6 +19,7 @@ from anymessage.errors import SourceError
 from anymessage.server import create_server
 from anymessage.settings import Settings
 from test_telegram_export import FIXTURE, GROUP, PERSON
+from test_telegram_media import png
 
 
 def test_explicit_source_bypasses_wechat(monkeypatch):
@@ -43,11 +45,11 @@ async def test_all_seven_input_schemas_match_default(tmp_path):
 
 
 @asynccontextmanager
-async def connect(transport, tmp_path):
+async def connect(transport, tmp_path, export_path=FIXTURE):
     broken = tmp_path / "unrelated-config.json"
     broken.write_text("PRIVATE_INVALID_CONFIG [")
     environment = {**os.environ, "ANYMESSAGE_CONFIG_FILE": str(broken), "ANYMESSAGE_DATA_DIR": str(tmp_path / "never-discover"), "ANYMESSAGE_SQLCIPHER": str(tmp_path / "never-execute")}
-    arguments = ["-m", "anymessage.server", "mcp", "--telegram-export", str(FIXTURE)]
+    arguments = ["-m", "anymessage.server", "mcp", "--telegram-export", str(export_path)]
     if transport == "stdio":
         async with stdio_client(StdioServerParameters(command=sys.executable, args=arguments, env=environment)) as (read, write):
             async with ClientSession(read, write) as client:
@@ -116,14 +118,37 @@ async def test_real_export_mcp_workflow(transport, tmp_path):
         assert [row["id"] for row in hits] == ["2"]
         assert not page.structuredContent["incomplete"]
         media = await client.call_tool("list_attachments", {"conversation_id": GROUP, "message_id": "5"})
-        assert not media.isError and media.structuredContent["items"] == []
-        assert media.structuredContent["metadata_state"] == "unsupported" and media.structuredContent["media_declared"]
-        unsupported = await client.call_tool("read_attachment", {"conversation_id": GROUP, "message_id": "5", "attachment_id": "a" * 32})
-        assert unsupported.isError and unsupported.structuredContent["state"] == "unsupported"
-        assert unsupported.structuredContent["content_verified"] is False
-        assert len(unsupported.content) == 1 and unsupported.content[0].type == "text"
-        assert "attachment_id" not in unsupported.structuredContent
-        for result in (status, listing, search, context, bounded, first, media, unsupported):
+        assert not media.isError and media.structuredContent["items"][0]["state"] == "attachment_missing"
+        missing = await client.call_tool("read_attachment", {"conversation_id": GROUP, "message_id": "5", "attachment_id": media.structuredContent["items"][0]["id"]})
+        assert missing.isError and missing.structuredContent["state"] == "attachment_missing"
+        assert missing.structuredContent["content_verified"] is False
+        assert len(missing.content) == 1 and missing.content[0].type == "text"
+        specification = await client.call_tool("get_message_context", {"conversation_id": hit["conversation_id"], "message_id": hit["id"], "before": 0, "after": 4})
+        spec = specification.structuredContent["items"][-1]
+        attachment = await client.call_tool("read_attachment", {"conversation_id": spec["conversation_id"], "message_id": spec["id"], "attachment_id": spec["attachments"][0]["id"]})
+        assert not attachment.isError and "500 mAh" in attachment.content[0].text
+        assert not attachment.structuredContent["content_verified"]
+        for result in (status, listing, search, context, bounded, first, media, missing, attachment):
             assert json.loads(result.content[-1].text) == result.structuredContent
         for name, arguments in (("search_messages", {"query": "proposal"}), ("get_message_context", {"conversation_id": PERSON, "message_id": "5"}), ("get_messages", {"conversation_id": GROUP, "start_time": True}), ("get_message_context", {"conversation_id": GROUP, "message_id": "02"}), ("search_messages", {"query": "different", "conversation_ids": [GROUP, PERSON], "cursor": first.structuredContent["next_cursor"]})):
             assert (await client.call_tool(name, arguments)).isError
+
+
+async def test_native_attachment_blocks_over_stdio(tmp_path):
+    data = png()
+    (tmp_path / "image.png").write_bytes(data)
+    (tmp_path / "unknown.bin").write_bytes(b"\x00\xfforiginal")
+    export_path = tmp_path / "native.json"
+    export_path.write_text(json.dumps({"id": 42, "type": "private_group", "messages": [
+        {"id": 1, "type": "message", "date_unixtime": "100", "text": "image", "photo": "image.png"},
+        {"id": 2, "type": "message", "date_unixtime": "101", "text": "binary", "file": "unknown.bin"},
+    ]}))
+    async with connect("stdio", tmp_path, export_path) as client:
+        for number, binary, expected, body in (("1", False, "image", data), ("1", True, "resource", data), ("2", True, "resource", b"\x00\xfforiginal")):
+            listing = await client.call_tool("list_attachments", {"conversation_id": GROUP, "message_id": number})
+            result = await client.call_tool("read_attachment", {"conversation_id": GROUP, "message_id": number, "attachment_id": listing.structuredContent["items"][0]["id"], "as_binary": binary})
+            assert not result.isError and result.content[0].type == expected
+            encoded = result.content[0].data if expected == "image" else result.content[0].resource.blob
+            assert base64.b64decode(encoded) == body
+            assert not result.structuredContent["content_verified"]
+            assert json.loads(result.content[-1].text) == result.structuredContent

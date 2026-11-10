@@ -17,7 +17,7 @@ Keep each host's actual installation results separate from these checks.
 
 ## Use the published bundle
 
-Download [AnyMessage 0.7.0 MCPB](https://github.com/knchst/AnyMessage/releases/download/v0.7.0/anymessage-0.7.0.mcpb) from the [release page](https://github.com/knchst/AnyMessage/releases/tag/v0.7.0).
+Download [AnyMessage 0.8.0 MCPB](https://github.com/knchst/AnyMessage/releases/download/v0.8.0/anymessage-0.8.0.mcpb) from the [release page](https://github.com/knchst/AnyMessage/releases/tag/v0.8.0).
 If you already configured AnyMessage, the bundle uses those saved account references.
 For a new account setup, read the [first-time setup guide](wechat-setup.md), then run:
 
@@ -65,7 +65,8 @@ The runtime check needs SQLCipher and a working `uv` command; `--uv /absolute/pa
 It extracts into a temporary path containing spaces, sets explicit nonexistent account references, checks the version's read-only tool inventory and unconfigured status, and reads eight synthetic demo messages.
 The verified numeric release version selects the original six tools for releases before 0.6.0 and seven tools including `get_message_context` from 0.6.0 onward.
 For those newer releases, it also follows an actual search hit to the adjacent approval and verified specification attachment.
-From 0.7.0 onward, it separately launches the packaged fictional Telegram export, follows its proposal to the approval, and checks unsupported media with broken unrelated WeChat configuration.
+From 0.7.0 onward, it separately launches the packaged fictional Telegram export with broken unrelated WeChat configuration and follows its proposal to the approval.
+For 0.7 releases it checks unsupported media. From 0.8.0 onward it requires the packaged specification TXT and reads its actual text through context, attachment listing, and the returned ID, while keeping Telegram verification false.
 This explicit SDK launch does not change the bundle's default installed WeChat entry.
 The check prints the observed tool count; the immutable 0.4.0 example above still expects six.
 It does not read an actual account.
