@@ -26,10 +26,13 @@ When the image basename comes from the resource index, the row-derived descripto
 ## Read content
 
 `read_attachment(conversation_id, message_id, attachment_id, offset=0, limit=20000, as_binary=false)` returns native MCP content plus metadata.
-Results for a resolved attachment include serialized metadata as a text block and the same object in `structuredContent`.
+Results for a resolved attachment include a serialized result as a text block and the same object in `structuredContent`.
+For document text, that object includes the current page in `text` alongside the metadata and continuation fields.
+Clients that prefer structured results can read the extracted text without relying on the preceding native text block.
+Image, binary, and failure results do not include a `text` field.
 Invalid arguments, unavailable message contexts, and stale attachment ids produce ordinary MCP tool errors before an attachment result exists.
 Clients that ignore structured results can still see the variant, errors, and continuation.
-The content block preceding the metadata is one of:
+The content block preceding the serialized result is one of:
 
 | Representation | MCP content | Behavior |
 | --- | --- | --- |

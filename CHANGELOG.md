@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Include extracted attachment pages in structured MCP results so clients such as Claude Code can read the document text.
+
 ## 0.3.1
 
 - Add `missing_reason` and fixed manual recovery guidance for attachment index queries with no match and unavailable cache files, while preserving `attachment_missing` and attachment ids.

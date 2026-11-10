@@ -47,6 +47,7 @@ def create_server(*, port: int = 8765) -> FastMCP:
     def read_attachment(conversation_id: Annotated[str, Field(min_length=1, max_length=512)], message_id: Annotated[str, Field(min_length=1, max_length=128)], attachment_id: Annotated[str, Field(min_length=32, max_length=32)], offset: Annotated[int, Field(ge=0, le=2000000)] = 0, limit: Annotated[int, Field(ge=1, le=100000)] = 20000, as_binary: bool = False) -> CallToolResult:
         """Read verified local attachment text, an image, or original bytes. Text offsets count Unicode characters. Binary and image results require offset zero. No downloads or OCR."""
         result = sources["wechat"].read_attachment(conversation_id, message_id, attachment_id, offset, limit, as_binary)
+        structured = {**result.metadata, **({"text": result.text} if result.text is not None else {})}
         content: list[TextContent | ImageContent | EmbeddedResource] = []
         if result.text is not None:
             content.append(TextContent(type="text", text=result.text))
@@ -56,8 +57,8 @@ def create_server(*, port: int = 8765) -> FastMCP:
                 content.append(ImageContent(type="image", data=encoded, mimeType=result.mime_type))
             else:
                 content.append(EmbeddedResource(type="resource", resource=BlobResourceContents(uri="attachment://wechat/" + attachment_id, mimeType=result.mime_type, blob=encoded)))
-        content.append(TextContent(type="text", text=json.dumps(result.metadata)))
-        return CallToolResult(content=content, structuredContent=result.metadata, isError=result.metadata["state"] not in ("ready", "no_extractable_text"))
+        content.append(TextContent(type="text", text=json.dumps(structured)))
+        return CallToolResult(content=content, structuredContent=structured, isError=result.metadata["state"] not in ("ready", "no_extractable_text"))
 
     return server
 

@@ -41,9 +41,15 @@ async def check_attachment_roundtrips(client, message_id, source):
     text = await client.call_tool("read_attachment", arguments)
     assert not text.isError and text.content[0].type == "text"
     assert text.content[0].text == "attachment text\nsecond line"
+    assert text.structuredContent.get("text") == "attachment text\nsecond line"
+    page = await client.call_tool("read_attachment", {**arguments, "offset": 11, "limit": 4})
+    assert page.structuredContent.get("text") == "text"
+    assert page.structuredContent["next_offset"] == 15
+    assert page.content[0].text == page.structuredContent["text"]
     binary = await client.call_tool("read_attachment", {**arguments, "as_binary": True})
     assert not binary.isError and binary.content[0].type == "resource"
     assert base64.b64decode(binary.content[0].resource.blob) == b"attachment text\nsecond line"
+    assert "text" not in binary.structuredContent
     listing = await client.call_tool(
         "list_attachments", {"conversation_id": USER, "message_id": "message/message_0.db:3"}
     )
@@ -56,6 +62,7 @@ async def check_attachment_roundtrips(client, message_id, source):
     assert image.content[0].mimeType == "image/jpeg"
     assert base64.b64decode(image.content[0].data) == image_bytes()
     assert image.structuredContent["variant"] == "thumbnail"
+    assert "text" not in image.structuredContent
     for result in (text, binary, image):
         assert json.loads(result.content[-1].text) == result.structuredContent
         assert "missing_reason" not in result.structuredContent
