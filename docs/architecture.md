@@ -4,7 +4,7 @@ An agent calls a small MCP tool through stdio or an explicitly started loopback 
 The tool selects the registered WeChat source and returns structured metadata.
 Attachment reads also return native MCP text, image, or embedded binary content.
 The WeChat source owns account discovery, key validation, schema checks, SQLCipher queries, message decoding, and cross-shard ordering.
-SQLCipher receives fixed read-only SQL and the selected database key through stdin.
+The reader sends fixed read-only SQL and the selected database key to SQLCipher through stdin.
 
 ## Choose direct local database reads
 
@@ -28,7 +28,7 @@ The same tuple forms the cursor bound, so equal timestamps and local ids in diff
 Every discovered `message_N.db` is checked before returning history.
 A missing key or unreadable shard fails the call.
 
-Each SQLCipher connection opens the database with `-readonly` and sets `query_only=ON`.
+Each reader connection opens the database with `-readonly` and sets `query_only=ON`.
 Each request checks the external schema before reading its rows.
 The process does not copy just the main database file, which would miss uncheckpointed WAL records.
 Queries across several databases observe separate committed states.
@@ -80,6 +80,18 @@ Remote clients require a separately managed authenticated HTTPS proxy.
 Grok Bot runs on a hosted computer, so generated local Grok CLI configuration cannot connect it to Mac databases.
 
 The MCP server never invokes a debugger, re-signs an application, or restarts WeChat.
+
+## Try the reader with fictional data
+
+`anymessage demo` launches a separate stdio MCP demo server and prints evidence returned by the production tools.
+`anymessage demo --mcp` exposes that server to a local AI client.
+`demo.py` owns the temporary encrypted databases, generated keys, fictional conversation, and cached attachment.
+It constructs `Settings` directly, so saved configuration and real account selection do not participate.
+`create_server(demo_settings=...)` labels the server and status as synthetic while using the same `WeChat` reader and attachment tools.
+The default server still resolves the normal settings.
+Both paths share executable resolution through `resolve_sqlcipher`.
+The standard status probe may read the installed application's public version metadata; demo message queries stay inside the temporary data directory.
+See [the demo](demo.md) for the evidence and lifecycle.
 
 ## Bind attachments to a message
 

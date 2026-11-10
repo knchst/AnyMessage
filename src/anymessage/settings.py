@@ -35,19 +35,22 @@ class Settings:
         root = data_dir or os.environ.get("ANYMESSAGE_DATA_DIR") or saved.get("data_dir") or Path.home() / "Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files"
         key = keys_file or os.environ.get("ANYMESSAGE_KEYS_FILE") or saved.get("keys_file")
         selected = sqlcipher or os.environ.get("ANYMESSAGE_SQLCIPHER") or saved.get("sqlcipher")
-        if selected:
-            executable = shutil.which(os.path.expanduser(selected))
-        else:
-            executable = shutil.which("sqlcipher") or next((found for path in (
-                "/opt/homebrew/opt/sqlcipher/bin/sqlcipher", "/usr/local/opt/sqlcipher/bin/sqlcipher",
-            ) if (found := shutil.which(path))), None)
-        if executable:
-            executable = os.path.abspath(executable)
+        executable = resolve_sqlcipher(selected)
         return cls(Path(root).expanduser().resolve(), account or os.environ.get("ANYMESSAGE_ACCOUNT") or saved.get("account"), Path(key).expanduser().absolute() if key else None, executable)
 
     def save(self) -> None:
         payload = {"version": 1, **{key: str(value) if isinstance(value, Path) else value for key, value in asdict(self).items()}}
         private_write(self.config_path(), json.dumps(payload, indent=2) + "\n")
+
+
+def resolve_sqlcipher(selected: str | None) -> str | None:
+    if selected:
+        executable = shutil.which(os.path.expanduser(selected))
+    else:
+        executable = shutil.which("sqlcipher") or next((found for path in (
+            "/opt/homebrew/opt/sqlcipher/bin/sqlcipher", "/usr/local/opt/sqlcipher/bin/sqlcipher",
+        ) if (found := shutil.which(path))), None)
+    return os.path.abspath(executable) if executable else None
 
 
 def private_write(path: Path, text: str) -> None:

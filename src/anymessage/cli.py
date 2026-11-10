@@ -194,6 +194,8 @@ def main(argv: list[str] | None = None) -> int:
     onboarding.add_argument("--command", help="Absolute AnyMessage executable path for client registration")
     diagnostic = commands.add_parser("doctor", help="Inspect readiness and prerequisites without reading messages")
     diagnostic.add_argument("--json", action="store_true")
+    demo = commands.add_parser("demo", help="Try fictional project messages and attachments without WeChat or account keys")
+    demo.add_argument("--mcp", action="store_true", help="Serve the fictional dataset over stdio MCP for your AI client")
     mcp = commands.add_parser("mcp", help="Run the MCP server or manage local clients")
     mcp.add_argument("--transport", choices=("stdio", "streamable-http"), default="stdio")
     mcp.add_argument("--port", type=int, default=8765, help="Loopback HTTP port; default 8765")
@@ -228,6 +230,19 @@ def main(argv: list[str] | None = None) -> int:
                 for step in report.next_steps:
                     print(step)
             return 0 if report.ready else 1
+        if args.command_name == "demo":
+            from anymessage.demo import demo_settings, print_demo_evidence
+
+            if args.mcp:
+                from anymessage.server import create_server
+
+                with demo_settings() as settings:
+                    create_server(demo_settings=settings).run(transport="stdio")
+            else:
+                import asyncio
+
+                asyncio.run(print_demo_evidence())
+            return 0
         if args.command_name == "mcp" and args.mcp_action == "config":
             print(configuration(args.format, client=args.client, command=args.command, server_only=args.server_only), end="")
             return 0

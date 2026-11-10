@@ -28,6 +28,10 @@ The WAL test keeps a real SQLCipher writer open while the read-only reader obser
 The protocol tests launch a real stdio server through the official MCP client.
 Do not replace those behavior checks with mocked responses.
 
+Regenerate the README replay from real synthetic MCP output with `uv run python scripts/render_demo_preview.py`.
+On macOS, add `--video` with FFmpeg installed to update the MP4 as well.
+The replay edits playback timing and does not claim to measure execution speed or show generated AI analysis.
+
 ## Check a release candidate
 
 ```sh
@@ -51,6 +55,8 @@ The workflow does not publish packages or releases.
 ## Change code and documentation together
 
 Keep the MCP tool contract and the documentation consistent.
+Update the English and simplified Chinese README introductions together when installation commands, supported clients, privacy boundaries, or demo availability change.
+The English reference owns the full configuration details; the Chinese introduction links to it instead of maintaining a second configuration reference.
 Validate external values at their owning boundary and keep database access in `wechat.py` and attachment format handling in `attachments.py`.
 Preserve the read-only SQLCipher flags and explicit incomplete-search coverage.
 Document any supported schema change and add a synthetic behavior case that would fail without it.

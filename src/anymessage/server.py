@@ -1,4 +1,4 @@
-"""AnyMessage stdio MCP entry point."""
+"""Read-only local messages through stdio or loopback Streamable HTTP MCP."""
 
 from __future__ import annotations
 
@@ -10,18 +10,22 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import BlobResourceContents, CallToolResult, EmbeddedResource, ImageContent, TextContent, ToolAnnotations
 from pydantic import Field
 
+from anymessage.settings import Settings
 from anymessage.wechat import WeChat
 
 
-def create_server(*, port: int = 8765) -> FastMCP:
-    sources = {"wechat": WeChat()}
-    server = FastMCP("AnyMessage", host="127.0.0.1", port=port, instructions="Read-only local messages. Call status first. Searches are bounded and conversation-scoped. A locked source requires local per-database keys.")
+def create_server(*, port: int = 8765, demo_settings: Settings | None = None) -> FastMCP:
+    sources = {"wechat": WeChat(demo_settings) if demo_settings is not None else WeChat()}
+    instructions = "Read-only local messages. Call status first. Searches are bounded and conversation-scoped. A locked source requires local per-database keys."
+    if demo_settings is not None:
+        instructions += " This is a temporary fictional Atlas project dataset, not personal WeChat history."
+    server = FastMCP("AnyMessage Demo" if demo_settings is not None else "AnyMessage", host="127.0.0.1", port=port, instructions=instructions)
     annotations = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
 
     @server.tool(annotations=annotations)
     def status() -> dict[str, Any]:
         """Inspect installed sources, accounts, encryption, keys and schema readiness without reading message content."""
-        return {"sources": [source.status() for source in sources.values()]}
+        return {"sources": [source.status() for source in sources.values()], **({"dataset": "synthetic"} if demo_settings is not None else {})}
 
     @server.tool(annotations=annotations)
     def list_conversations(limit: Annotated[int, Field(ge=1, le=200)] = 50, offset: Annotated[int, Field(ge=0, le=100000)] = 0) -> dict[str, Any]:

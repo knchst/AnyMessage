@@ -3,7 +3,10 @@
 AnyMessage gives its MCP client access to local message data.
 Connect it only to a client you intend to allow to read that data.
 That client may send returned content to its model or service provider.
-The server uses stdio and does not start a network listener.
+The server uses stdio by default and does not start a network listener in that mode.
+Explicitly starting Streamable HTTP binds a listener to `127.0.0.1` for clients on the same Mac.
+That listener has no application authentication and is reachable by other local processes.
+Remote access requires a separately managed authenticated HTTPS proxy; do not expose the listener directly to the internet.
 The normal MCP reader opens databases read-only and does not acquire keys or invoke the optional bootstrap scripts.
 
 Keep the key manifest outside the checkout, inside an owner-only directory, with file mode 0600.

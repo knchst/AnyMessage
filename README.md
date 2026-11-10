@@ -1,7 +1,18 @@
 # AnyMessage
 
-Read local macOS messages from an AI agent through MCP.
-The first supported source is WeChat 4.x.
+Ask your chats. Get answers with sources.
+
+Give Codex, Claude, or Cursor read-only access to local WeChat conversations and cached attachments through MCP.
+Ask what changed in a project, which decisions were approved, or what still needs confirmation.
+Your AI does the analysis; AnyMessage returns messages, source IDs, coverage, and supported attachment content.
+
+Start with [a fictional project](#try-a-fictional-project), [three investigation recipes](docs/recipes.md), or [your own conversations](#install-and-set-up).
+[简体中文](README.zh-CN.md)
+
+![Replay of the fictional Atlas investigation](.github/assets/demo.gif)
+
+Replay of a verified MCP run. Playback timing is edited; this replay does not call an AI model.
+[Watch the 30-second video](.github/assets/demo.mp4) or [try the demo](#try-a-fictional-project).
 
 AnyMessage provides a read-only stdio server for conversation listing, text history retrieval, conversation-scoped search, and local attachment reading.
 It reads local SQLCipher databases and committed WAL records without exporting a separate plaintext message archive.
@@ -10,6 +21,23 @@ This project is an early implementation.
 The reader and optional key initialization have been exercised with WeChat 4.1.15 on Apple Silicon.
 Other versions require validation against their local schemas.
 There is no message sending, deletion, or cloud-history synchronization.
+
+## Try a fictional project
+
+The latest source includes a demo that reads fictional messages and an attachment through the real MCP tools.
+It needs SQLCipher, but no WeChat installation, account keys, or AI subscription.
+The current Homebrew release does not include these demo commands yet.
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run:
+
+```sh
+brew install sqlcipher
+uvx --from git+https://github.com/knchst/AnyMessage anymessage demo
+```
+
+The demo shows an approved battery change, an unconfirmed delivery date, and an unavailable drawing.
+It prints source evidence without calling an AI model.
+Connect your own AI with `uvx --from git+https://github.com/knchst/AnyMessage anymessage demo --mcp`.
+See [the walkthrough and MCP configuration](docs/demo.md).
 
 ## Install and set up
 
