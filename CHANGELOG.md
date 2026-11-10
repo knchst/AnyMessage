@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.1
 
 - Add `missing_reason` and fixed manual recovery guidance for attachment index queries with no match and unavailable cache files, while preserving `attachment_missing` and attachment ids.
 
