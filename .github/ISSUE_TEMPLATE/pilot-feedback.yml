@@ -7,49 +7,73 @@ body:
       value: |
         Feedback in English, 日本語, or 中文 is welcome.
         This report is public. Use fictional or redacted examples and leave out messages, account identifiers, keys, files, and personal paths.
-        We want to understand first use and whether you return for a different investigation.
+        Report one dataset at a time. Mark later observations as follow-ups and check your selections before submitting.
+        We want to understand first use and whether you return for a different real investigation.
   - type: dropdown
     id: source
     attributes:
-      label: What did you try?
+      label: Which dataset did you try for this report?
+      multiple: false
       options:
-        - Fictional demo only
-        - My local WeChat data
-        - Both
+        - Not reported
+        - "WeChat: fictional Atlas demo"
+        - "WeChat: my local data"
+        - "Telegram: fictional River export"
+        - "Telegram: my own Desktop JSON export"
+      default: 0
+    validations:
+      required: true
+  - type: dropdown
+    id: report-kind
+    attributes:
+      label: Is this your first AnyMessage trial report?
+      multiple: false
+      options:
+        - Not reported
+        - First report
+        - Follow-up to an earlier report
+      default: 0
     validations:
       required: true
   - type: dropdown
     id: first-result
     attributes:
-      label: Did you get an answer you could check against messages?
+      label: What happened when you first tried the dataset selected above?
+      description: Include a failed setup attempt. Describe later success in the outcome without replacing the first-attempt result.
+      multiple: false
       options:
-        - Yes, without individual setup help
-        - Yes, with individual setup help
-        - I connected but could not verify a useful answer
+        - Not reported
         - I could not finish setup
+        - I connected but could not verify a useful answer
+        - I verified an answer with individual setup help
+        - I verified an answer without individual setup help
+      default: 0
     validations:
       required: true
   - type: dropdown
     id: reuse
     attributes:
-      label: Did you use it for a different investigation within 14 days?
+      label: Did you return to this dataset for a different real investigation within 14 days of your first attempt?
+      description: For your own data, count from the first attempt, including failed setup. A first real-data attempt after a demo is not a return.
+      multiple: false
       options:
-        - "Yes"
-        - No, and 14 days have passed
+        - Not reported or unsure
+        - Demo only
         - Not yet, fewer than 14 days have passed
-        - I only tried the fictional demo
+        - No, the full 14 days have passed
+        - Yes, within 14 days
+      default: 0
     validations:
       required: true
   - type: input
     id: environment
     attributes:
       label: Versions
-      description: macOS, AI client, AnyMessage, and WeChat if you used live data. Do not paste raw diagnostic output.
-      placeholder: macOS 26, Codex, AnyMessage version, WeChat version
+      description: macOS, AI client and AnyMessage; WeChat for local WeChat, or Telegram Desktop for your own export, if known. No raw diagnostic output.
   - type: textarea
     id: outcome
     attributes:
-      label: What were you trying to find out?
-      description: Describe the outcome, where you got stuck, and what would make you use it again. Use a fictional example if the project is private.
+      label: What did you try to find out?
+      description: Describe the task, what worked or where you stopped, and any change that would help. For a follow-up, include your earlier public trial issue number if available. If this is your first report but describes later use, say so. Fictional examples are fine.
     validations:
       required: true
