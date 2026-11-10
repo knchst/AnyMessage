@@ -12,6 +12,23 @@ Use the [fictional demo](demo.md) separately before connecting an account.
 Manifest validation and an MCP SDK check establish artifact behavior; they do not establish installation support in a particular desktop host.
 Keep each host's actual installation results separate from these checks.
 
+## Use the published bundle
+
+Download [AnyMessage 0.4.0 MCPB](https://github.com/knchst/AnyMessage/releases/download/v0.4.0/anymessage-0.4.0.mcpb) from the [release page](https://github.com/knchst/AnyMessage/releases/tag/v0.4.0).
+If you already configured AnyMessage, the bundle uses those saved account references.
+For a new account setup, read the [first-time setup guide](wechat-setup.md), then run:
+
+```sh
+brew install knchst/tap/anymessage
+anymessage setup --no-register
+anymessage doctor
+```
+
+`--no-register` saves ready account references without adding another client entry.
+First-time key capture still requires the setup flow's explicit consent.
+Import the downloaded bundle using your host's MCPB 0.4 UV installation procedure, then check `status`.
+After updating a bundle, restart or reconnect its MCP server before checking `status` again.
+
 ## Build the release pair
 
 Use Python 3.11 or later and the already published source archive.
