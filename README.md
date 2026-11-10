@@ -26,7 +26,7 @@ There is no message sending, deletion, or cloud-history synchronization.
 
 ## Try a Telegram export without keys
 
-AnyMessage 0.8.0 reads text, exact-message context, and local attachments from Telegram Desktop JSON exports.
+AnyMessage 0.9.0 reads text, exact-message context, and local attachments from Telegram Desktop JSON exports and generates client entries for them.
 Download the [fictional River export](examples/telegram-fictional.json) and [specification](examples/river-spec-v2.txt) into the same folder and run it with the latest source:
 
 ```sh
@@ -35,7 +35,18 @@ curl --fail --location https://raw.githubusercontent.com/knchst/AnyMessage/main/
 uvx --from git+https://github.com/knchst/AnyMessage anymessage mcp --telegram-export "$PWD/telegram-fictional.json"
 ```
 
-This starts a stdio MCP server. Connect an AI client using the [complete JSON or Codex TOML configuration](docs/telegram-export.md#connect-your-ai).
+This starts a stdio MCP server. With an installed AnyMessage 0.9.0 or later, print a client entry instead:
+
+```sh
+anymessage mcp config --telegram-export telegram-fictional.json --client cursor --format json
+anymessage mcp --telegram-export telegram-fictional.json config --client codex --format toml
+```
+
+Merge the output into the client's existing configuration, then reconnect its MCP server.
+Generation writes no client files and does not validate the export; the launched server validates it without falling back to WeChat.
+It preserves the selected lexical filename as an absolute argument, including directory aliases and `..`.
+Use the separate `telegram-export` entry alongside `AnyMessage` for WeChat. `mcp add` still registers only WeChat.
+See [all entry options and manual examples](docs/telegram-export.md#connect-your-ai).
 It needs neither WeChat nor SQLCipher, account keys, or saved WeChat settings.
 Ask the client to search for `proposal` in the River project, then inspect that hit's neighboring records to find Maya's approval and the specification in message `6`. List that message's attachments and read the returned file ID.
 For your own data, export a chat as JSON in Telegram Desktop and select that file instead.
@@ -125,10 +136,10 @@ anymessage mcp config --format json --server-only
 anymessage mcp
 ```
 
-Copy the generated entry into the client's configuration.
-`--server-only` prints the server object for forms that provide their own wrapper.
+Merge the generated entry into the client's existing configuration.
+`--server-only` prints the server object without the JSON `mcpServers` or TOML `mcp_servers` wrapper.
 Use `--client cursor` to include Cursor's explicit `type = stdio` equivalent in JSON.
-`--command /absolute/path/bin/anymessage` selects another installation explicitly.
+`--command 'relative or absolute/bin/anymessage'` selects another installation explicitly; relative paths become absolute.
 Registration retains the invoked executable's absolute symlink path, so a Homebrew upgrade does not pin a versioned Cellar path.
 See [the JSON example](examples/mcp.json) and [the Codex example](examples/codex-mcp.toml).
 No arguments also starts the stdio server for existing configurations.

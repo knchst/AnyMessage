@@ -59,10 +59,11 @@ def main() -> None:
     locked = [item for item in tomllib.loads(source_files["uv.lock"].decode())["package"] if item["name"] == "anymessage"]
     if len(locked) != 1 or locked[0]["version"] != version or locked[0]["source"] != {"editable": "."}:
         raise ValueError("The local project and lock disagree.")
+    supports_export_config = tuple(int(part) for part in version.split(".")) >= (0, 9, 0)
     manifest = {
         "manifest_version": "0.4", "name": "anymessage", "display_name": "AnyMessage", "version": version,
-        "description": "Read-only WeChat chats and local attachments for AI on macOS. Requires SQLCipher and setup.",
-        "long_description": "For Apple Silicon macOS 14 or later. Requires a compatible MCPB 0.4 UV host, SQLCipher, and explicit AnyMessage account setup. Installation does not capture keys or connect an account. See the documentation for the separate fictional demo.",
+        "description": "Read-only local Telegram JSON and WeChat chats. WeChat requires SQLCipher and account setup." if supports_export_config else "Read-only WeChat chats and local attachments for AI on macOS. Requires SQLCipher and setup.",
+        "long_description": "For Apple Silicon macOS 14 or later with a compatible MCPB 0.4 UV host. The default entry reads WeChat. Reading your WeChat chats requires SQLCipher, account keys and explicit account setup. To read a local Telegram Desktop JSON export, generate a separate stdio entry with an explicit export path; this mode needs no WeChat setup, keys or SQLCipher. Installing the bundle does not capture keys or connect an account. A separate fictional demo is available." if supports_export_config else "For Apple Silicon macOS 14 or later. Requires a compatible MCPB 0.4 UV host, SQLCipher, and explicit AnyMessage account setup. Installation does not capture keys or connect an account. See the documentation for the separate fictional demo.",
         "author": {"name": "Kenichi Saito", "url": "https://github.com/knchst"},
         "repository": {"type": "git", "url": "https://github.com/knchst/AnyMessage"},
         "homepage": "https://github.com/knchst/AnyMessage", "documentation": "https://github.com/knchst/AnyMessage#install-and-set-up",

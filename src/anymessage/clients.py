@@ -126,7 +126,7 @@ def edit_json(text: str, section: str, name: str, entry: dict[str, Any]) -> str:
     return text[:position] + comma + "\n" + insertion + "\n" + text[position:]
 
 
-def server_entry(client: str | None = None, command: str | None = None) -> dict[str, Any]:
+def server_entry(client: str | None = None, command: str | None = None, *, telegram_export: Path | None = None) -> dict[str, Any]:
     executable = command
     if executable is None and Path(sys.argv[0]).name == "anymessage":
         executable = sys.argv[0]
@@ -135,18 +135,21 @@ def server_entry(client: str | None = None, command: str | None = None) -> dict[
         raise ValueError("AnyMessage executable was not found on PATH. Pass --command with its absolute path.")
     executable = str(Path(executable).expanduser().absolute())
     entry: dict[str, Any] = {**({"type": "stdio"} if client == "cursor" else {}), "command": executable, "args": ["mcp"]}
-    if os.environ.get("ANYMESSAGE_CONFIG_FILE"):
+    if telegram_export is not None:
+        entry["args"] = ["mcp", "--telegram-export", str(telegram_export.expanduser().absolute())]
+    elif os.environ.get("ANYMESSAGE_CONFIG_FILE"):
         entry["env"] = {"ANYMESSAGE_CONFIG_FILE": str(Path(os.environ["ANYMESSAGE_CONFIG_FILE"]).expanduser().absolute())}
     return entry
 
 
-def configuration(format: str, *, client: str | None = None, command: str | None = None, server_only: bool = False) -> str:
+def configuration(format: str, *, client: str | None = None, command: str | None = None, server_only: bool = False, telegram_export: Path | None = None) -> str:
     if client == "grokbot":
         raise ValueError(GROKBOT_GUIDANCE)
-    entry = server_entry(client, command)
+    entry = server_entry(client, command, telegram_export=telegram_export)
+    name = "telegram-export" if telegram_export is not None else "AnyMessage"
     if format == "json":
-        return json.dumps(entry if server_only else {"mcpServers": {"AnyMessage": entry}}, indent=2) + "\n"
-    return tomlkit.dumps(entry if server_only else {"mcp_servers": {"AnyMessage": entry}})
+        return json.dumps(entry if server_only else {"mcpServers": {name: entry}}, indent=2) + "\n"
+    return tomlkit.dumps(entry if server_only else {"mcp_servers": {name: entry}})
 
 
 def register(client: str, *, replace: bool = False, command: str | None = None) -> RegistrationResult:

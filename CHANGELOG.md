@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.0
+
+- Generate manual Telegram stdio client entries with `mcp config --telegram-export FILE` in JSON or TOML, including Cursor and server-only forms. Preserve the selected lexical filename in an absolute argument without reading the export or saved WeChat configuration.
+- Accept the export flag before or after `config`, reject repeated selections and Telegram HTTP configuration, and retain the refusal to register exports through `mcp add`. The launched server validates the export.
+- Clarify that the MCPB default entry reads WeChat and requires SQLCipher, account keys, and account setup. A separate explicit Telegram entry needs none of those requirements.
+- Exercise parsed generated entries from installed wheels and extracted MCPB environments through actual Telegram proposal, approval, and specification reads. Keep the default WeChat launch and historical bundle checks.
+
 ## 0.8.0
 
 - Read classic Telegram exported files, photos, thumbnails, and vCards through message-, snapshot-, and variant-bound attachment IDs. Return supported document text, native images, or explicitly requested original bytes with existing limits and unchanged tool inputs.
