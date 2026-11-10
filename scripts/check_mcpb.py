@@ -47,10 +47,13 @@ async def main() -> None:
         if project["name"] != "anymessage" or project["version"] != version:
             raise ValueError("The bundled project and release versions disagree.")
         supports_context = tuple(int(part) for part in version.split(".")) >= (0, 6, 0)
+        supports_export = tuple(int(part) for part in version.split(".")) >= (0, 7, 0)
         expected_tools = {"status", "list_conversations", "get_messages", "search_messages", "list_attachments", "read_attachment"}
         if supports_context:
             expected_tools.add("get_message_context")
         required = {"README.md", "README.zh-CN.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "tools/wechat-bootstrap/LICENSE", "tools/wechat-bootstrap/bootstrap_keys.py", "tools/wechat-bootstrap/capture_keys.py", "uv.lock", "src/anymessage/server.py", "docs/demo.md", ".github/assets/demo.gif"}
+        if supports_export:
+            required.update(("src/anymessage/telegram_export.py", "docs/telegram-export.md", "examples/telegram-fictional.json"))
         if not required <= set(names):
             raise ValueError("The bundle is missing runtime, documentation, or license files.")
         print(f"Release pair matches {args.tag}, its manifest, and SHA-256.")
@@ -99,6 +102,23 @@ async def main() -> None:
             print(f"Extracted bundle passed {observed_count} read-only tools, unconfigured status, and eight synthetic messages outside the checkout.")
             if supports_context:
                 print("Search-hit context returned the adjacent approval and verified specification attachment.")
+            if supports_export:
+                (root / "absent-config.json").write_text("unrelated broken WeChat configuration")
+                export_arguments = [*arguments, "--telegram-export", str(root / "examples/telegram-fictional.json")]
+                async with stdio_client(StdioServerParameters(command=args.uv, args=export_arguments, env=environment, cwd=temporary)) as (read, write):
+                    async with ClientSession(read, write) as client:
+                        await client.initialize()
+                        status = await client.call_tool("status", {})
+                        assert status.structuredContent["sources"][0]["source"] == "telegram_export"
+                        search = await client.call_tool("search_messages", {"query": "proposal", "conversation_id": "telegram:private_group:42"})
+                        hit = search.structuredContent["items"][0]
+                        context = await client.call_tool("get_message_context", {"conversation_id": hit["conversation_id"], "message_id": hit["id"], "before": 1, "after": 2})
+                        assert not context.isError and [row["id"] for row in context.structuredContent["items"]] == ["1", "2", "3", "4"]
+                        assert context.structuredContent["items"][-1]["text"].startswith("Approved:")
+                        assert context.structuredContent["snapshot_consistency"] == "immutable_export"
+                        media = await client.call_tool("list_attachments", {"conversation_id": hit["conversation_id"], "message_id": "5"})
+                        assert media.structuredContent["items"] == [] and media.structuredContent["metadata_state"] == "unsupported"
+                print("Explicit Telegram export passed actual search-hit context and unsupported media with broken unrelated WeChat configuration.")
 
 
 if __name__ == "__main__":

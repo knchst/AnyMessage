@@ -1,7 +1,7 @@
 [project]
 name = "anymessage"
-version = "0.6.0"
-description = "Read-only local MCP access to macOS messaging applications, starting with WeChat."
+version = "0.7.0"
+description = "Read-only MCP access to local WeChat messages and Telegram Desktop JSON exports."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"

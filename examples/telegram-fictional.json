@@ -1,0 +1,27 @@
+{
+  "chats": {
+    "list": [
+      {
+        "name": "River project (fictional)",
+        "type": "private_group",
+        "id": 42,
+        "messages": [
+          {"id": 4, "type": "message", "date_unixtime": "1794214980", "from": "Maya", "from_id": "user2", "text": "Approved: use the 500 mAh battery. Keep the pilot quantity at 50."},
+          {"id": 2, "type": "message", "date_unixtime": "1794214920", "from": "Chen", "from_id": "user1", "text": ["River proposal: use a ", {"type": "bold", "text": "500 mAh battery"}, ". Please confirm."]},
+          {"id": 1, "type": "message", "date_unixtime": "1794214860", "from": "Maya", "from_id": "user2", "text": "The current battery is 400 mAh."},
+          {"id": 3, "type": "service", "date_unixtime": "1794214920", "actor": "Chen", "actor_id": "user1", "action": "pin_message", "message_id": 2},
+          {"id": 5, "type": "message", "date_unixtime": "1794215040", "from": "Chen", "from_id": "user1", "text": "River drawing attached; thickness still needs confirmation.", "file": "files/fictional-drawing.pdf", "media_type": "document"}
+        ]
+      },
+      {
+        "name": "River supplier (fictional)",
+        "type": "personal_chat",
+        "id": 42,
+        "messages": [
+          {"id": 2, "type": "message", "date_unixtime": "1794215100", "from": "Alex", "from_id": "user3", "text": "November 26 is a proposed date. The factory has not confirmed it."}
+        ]
+      }
+    ]
+  },
+  "left_chats": {"list": []}
+}

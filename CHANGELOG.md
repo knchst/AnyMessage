@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0
+
+- Add explicit `mcp --telegram-export PATH` startup for key-free, text-only Telegram Desktop JSON snapshots without reading saved WeChat settings or discovering accounts or SQLCipher.
+- Read single-chat and joined/left account chat lists, classic text and entity arrays, captions, and literal service text. Preserve type-qualified chat IDs, signed 64-bit message IDs, unsupported dated rows, and explicit counts for undated omissions.
+- Add snapshot-, query-, and selection-bound cursors, shared bounded search, and exact chronological context with the existing seven MCP input schemas.
+- Return explicit unsupported Telegram media results without resolving or opening referenced paths. Add a downloadable fictional export and complete manual client configuration.
+- Bound JSON input at 16 MiB and document in-memory loading, restart behavior, and incomplete export coverage. Keep WeChat and the installed MCPB launch as defaults.
+
 ## 0.6.0
 
 - Add `get_message_context` to read an exact conversation/message pair with up to 50 nearest older and 50 nearest newer local records in chronological order.

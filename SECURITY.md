@@ -7,7 +7,13 @@ The server uses stdio by default and does not start a network listener in that m
 Explicitly starting Streamable HTTP binds a listener to `127.0.0.1` for clients on the same Mac.
 That listener has no application authentication and is reachable by other local processes.
 Remote access requires a separately managed authenticated HTTPS proxy; do not expose the listener directly to the internet.
-The normal MCP reader opens databases read-only and does not acquire keys or invoke the optional bootstrap scripts.
+The default WeChat reader opens databases read-only and does not acquire keys or invoke the optional bootstrap scripts.
+Explicit Telegram export mode reads only the selected regular JSON file and retains an in-memory snapshot for the server lifetime.
+It bypasses saved WeChat settings, account discovery, and SQLCipher discovery.
+The file is capped at 16 MiB, but decoding and normalization can use substantially more memory.
+All selected file bytes, including unrelated account sections, briefly pass through memory before only chat records are retained.
+Telegram media paths are neither resolved nor opened. The attachment tools return unsupported results without verifying bytes.
+The export is already plaintext. Keep real exports private and connect only a client you trust with their message bodies.
 
 Keep the key manifest outside the checkout, inside an owner-only directory, with file mode 0600.
 Do not include keys, database files, message text, account identifiers, or private configuration in bug reports.
