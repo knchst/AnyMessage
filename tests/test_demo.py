@@ -8,7 +8,7 @@ import sys
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from anymessage.demo import demo_settings
+from anymessage.demo import CONVERSATION, DAY_END, DAY_START, SUPPLIER_CONVERSATION, demo_settings
 from anymessage.cli import main
 from anymessage.settings import Settings
 
@@ -61,9 +61,11 @@ async def test_demo_protocol_evidence_and_missing_drawing(monkeypatch, sqlcipher
             assert status.structuredContent["dataset"] == "synthetic"
             assert status.structuredContent["sources"][0]["state"] == "ready"
             conversations = await client.call_tool("list_conversations", {})
-            conversation = conversations.structuredContent["items"][0]["id"]
+            assert {item["id"] for item in conversations.structuredContent["items"]} == {CONVERSATION, SUPPLIER_CONVERSATION}
+            conversation = CONVERSATION
             history = await client.call_tool("get_messages", {"conversation_id": conversation, "limit": 20})
             messages = history.structuredContent["items"]
+            assert len(messages) == 8
             approval = next(message for message in messages if (message["text"] or "").startswith("Approved:"))
             assert "500 mAh" in approval["text"]
             assert approval["sender_id"] == "Maya"
@@ -97,6 +99,15 @@ async def test_demo_protocol_evidence_and_missing_drawing(monkeypatch, sqlcipher
                 matches.extend(result.structuredContent["items"])
                 cursor = result.structuredContent["next_cursor"]
             assert {message["sender_id"] for message in matches} == {"Maya", "Chen"}
+            scoped = await client.call_tool("search_messages", {"query": "500", "conversation_ids": [CONVERSATION, SUPPLIER_CONVERSATION], "start_time": DAY_START, "end_time": DAY_END})
+            assert not scoped.isError
+            assert scoped.structuredContent["scanned"] == 9
+            assert len(scoped.structuredContent["items"]) == 3
+            assert {item["conversation_id"] for item in scoped.structuredContent["items"]} == {CONVERSATION, SUPPLIER_CONVERSATION}
+            assert not scoped.structuredContent["incomplete"]
+            dated = await client.call_tool("get_messages", {"conversation_id": SUPPLIER_CONVERSATION, "start_time": DAY_START, "end_time": DAY_END})
+            assert len(dated.structuredContent["items"]) == 1
+            assert "Supplier proposal:" in dated.structuredContent["items"][0]["text"]
     assert config.read_text() == "invalid saved configuration"
     assert sorted(path.name for path in tmp_path.iterdir()) == ["config.json"]
 
@@ -112,6 +123,9 @@ def test_demo_walkthrough_and_missing_sqlcipher(monkeypatch, sqlcipher, tmp_path
     assert "Battery: 500 mAh (approved)" in result.stdout
     assert "cache_file_unavailable" in result.stdout
     assert "Incomplete: True" in result.stdout
+    assert "3 matches in 9 scanned messages" in result.stdout
+    assert SUPPLIER_CONVERSATION in result.stdout
+    assert "November 10 follow-up is outside" in result.stdout
     monkeypatch.setenv("ANYMESSAGE_SQLCIPHER", str(tmp_path / "not-installed"))
     failed = subprocess.run([sys.executable, "-m", "anymessage.server", "demo"], capture_output=True, text=True, timeout=10)
     assert failed.returncode == 2

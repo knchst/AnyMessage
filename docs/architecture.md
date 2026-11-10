@@ -22,11 +22,30 @@ Source status distinguishes account selection, installation prerequisites, key p
 
 ## Preserve message ordering and coverage
 
-The stable message identity is the message shard's relative path plus its `local_id`.
-History order is descending `(create_time, sort_seq, shard_path, local_id)`.
-The same tuple forms the cursor bound, so equal timestamps and local ids in different shards remain reachable.
-Every discovered `message_N.db` is checked before returning history.
+The stable message identity is `(conversation_id, id)`, where `id` contains the shard's relative path and `local_id`.
+Different conversation tables can reuse the same `local_id` in one shard.
+History and search order is descending `(create_time, sort_seq, shard_path, local_id, conversation_rank)`.
+Ranks enumerate the sorted explicit selection, including chats with no rows in the time range.
+The same tuple forms the cursor bound, so ties across chats and shards remain reachable.
+Every discovered `message_N.db` is checked before returning history or search.
 A missing key or unreadable shard fails the call.
+A selected chat with no table in any shard returns `conversation_not_found`; an existing table with no in-range rows returns an empty result.
+
+The frozen `MessageScope` owns the canonical selection and optional UTC Unix-second bounds.
+The source validates exactly one selector, 1–8 distinct ids, and strict signed 64-bit integer seconds before account access.
+Date predicates include `start_time` and exclude `end_time`; when both are present, start must be less than end.
+Each shard query combines only selected tables with `UNION ALL` and applies one ordered row limit.
+`_read_window` merges at most `n+1` raw rows per shard and retains only the newest `n+1` candidates, with `n <= 200`.
+This bounds returned row counts, not SQLite disk reads, bytes, or latency.
+Schema checks run once per shard per call, independently of the number of search windows.
+
+Dated or multi-chat calls use compact base64url JSON v2 cursors with a position and SHA-256 scope digest.
+The digest covers the resolved account root, sorted ids, and bounds; it prevents accidental scope reuse and is not authentication.
+Unbounded singleton calls, including one-ID arrays, emit and accept the legacy conversation-plus-four-field-position format.
+Legacy cursors cannot bind the local account.
+History and search accept position cursors for the same scope; search queries are not cursor-bound.
+Continue with the original query to preserve its coverage. Changing the query leaves newer rows unsearched for that query.
+Selection order, result limit, and scan limit can change between calls.
 
 Each reader connection opens the database with `-readonly` and sets `query_only=ON`.
 Each request checks the external schema before reading its rows.
@@ -37,6 +56,11 @@ Search scans a bounded newest-first history range and decodes text before matchi
 It stops at the result or scan limit and returns the last processed message cursor.
 This preserves unreturned matches for the next call.
 Unsupported non-text records and decoding failures are counted explicitly.
+The shared `scan_limit` counts inspected records across the whole selection, rather than allocating a separate budget per chat.
+Only inspected rows are decoded; raw lookahead rows establish continuation without incrementing counters.
+Search results retain the singular coverage label for singleton scopes and use `decoded_local_text_in_selected_conversations` for multiple chats.
+Results echo the canonical selection and date bounds, checked shards, and per-query consistency.
+`truncated` means a cursor remains; `incomplete` also includes decoding failures.
 
 ## Keep secrets outside the protocol
 
@@ -85,7 +109,7 @@ The MCP server never invokes a debugger, re-signs an application, or restarts We
 
 `anymessage demo` launches a separate stdio MCP demo server and prints evidence returned by the production tools.
 `anymessage demo --mcp` exposes that server to a local AI client.
-`demo.py` owns the temporary encrypted databases, generated keys, fictional conversation, and cached attachment.
+`demo.py` owns the temporary encrypted databases, generated keys, fictional project and supplier conversations, and cached attachment.
 It constructs `Settings` directly, so saved configuration and real account selection do not participate.
 `create_server(demo_settings=...)` labels the server and status as synthetic while using the same `WeChat` reader and attachment tools.
 The default server still resolves the normal settings.

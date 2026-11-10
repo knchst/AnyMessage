@@ -24,6 +24,9 @@ from anymessage.wechat import sql_text
 
 
 CONVERSATION = "atlas-demo@chatroom"
+SUPPLIER_CONVERSATION = "atlas-supplier-demo@chatroom"
+DAY_START = int(datetime(2026, 11, 9, tzinfo=timezone.utc).timestamp())
+DAY_END = DAY_START + 86400
 SPECIFICATION = b"Atlas pilot specification v2\nBattery: 500 mAh (approved)\nQuantity: 50 units\nDelivery: November 26 (proposed, not confirmed)\nEnclosure thickness: pending updated drawing\n"
 MESSAGES = (
     (1, "Maya", "Baseline approved: 400 mAh battery, pilot batch of 50."),
@@ -34,6 +37,10 @@ MESSAGES = (
     (6, "Chen", "atlas-enclosure.pdf"),
     (7, "Chen", "I proposed November 26 delivery, but the factory has not confirmed. Quote still pending."),
     (8, "Maya", "Next review: approve final thickness only after the drawing is available."),
+)
+SUPPLIER_MESSAGES = (
+    (1, DAY_START + 9 * 3600 + 90, "Supplier proposal: 500 mAh needs a revised quote; delivery remains unconfirmed."),
+    (2, DAY_END + 9 * 3600, "Supplier follow-up: enclosure thickness still awaits the drawing."),
 )
 
 
@@ -54,6 +61,7 @@ def demo_settings() -> Iterator[Settings]:
         base = Path(directory)
         root = base / "db_storage"
         table = "Msg_" + hashlib.md5(CONVERSATION.encode()).hexdigest()
+        supplier_table = "Msg_" + hashlib.md5(SUPPLIER_CONVERSATION.encode()).hexdigest()
         started_at = int(datetime(2026, 11, 9, 9, tzinfo=timezone.utc).timestamp())
         attachments = {4: SPECIFICATION, 6: b"Fictional drawing intentionally absent from the demo cache."}
         sqls = {
@@ -72,6 +80,11 @@ def demo_settings() -> Iterator[Settings]:
                 kind = 25769803825
             timestamp = started_at + identity * 60
             sqls["message/message_0.db"] += f'INSERT INTO "{table}" VALUES({identity},{1000 + identity},{kind},{identity},{1 if sender == "Maya" else 2},{timestamp},X\'{text.encode().hex()}\',0,NULL);'
+        sqls["session/session.db"] += f"INSERT INTO SessionTable VALUES({sql_text(SUPPLIER_CONVERSATION)},{SUPPLIER_MESSAGES[-1][1]},'Atlas supplier follow-up');"
+        sqls["contact/contact.db"] += f"INSERT INTO contact VALUES({sql_text(SUPPLIER_CONVERSATION)},'Atlas supplier (fictional)','','');"
+        sqls["message/message_0.db"] += f'CREATE TABLE "{supplier_table}" AS SELECT * FROM "{table}" WHERE 0;'
+        for identity, timestamp, text in SUPPLIER_MESSAGES:
+            sqls["message/message_0.db"] += f'INSERT INTO "{supplier_table}" VALUES({identity},{2000 + identity},1,{identity},2,{timestamp},X\'{text.encode().hex()}\',0,NULL);'
         cache = base / "msg/file/2026-11/atlas-spec-v2.txt"
         cache.parent.mkdir(parents=True)
         cache.write_bytes(SPECIFICATION)
@@ -111,9 +124,10 @@ async def print_demo_evidence() -> None:
             ready = await call("status", {})
             print(f"Dataset: {ready.structuredContent['dataset']}. Reader: {ready.structuredContent['sources'][0]['state']}.")
             conversations = await call("list_conversations", {})
-            print(f"Conversation: {conversations.structuredContent['items'][0]['display_name']}")
+            print("Conversations: " + ", ".join(item["display_name"] for item in conversations.structuredContent["items"]))
             print("\nQuestion to investigate: What changed in Atlas, and what still needs confirmation?\n")
-            history = await call("get_messages", {"conversation_id": CONVERSATION})
+            print("History range: 2026-11-09 UTC, start inclusive and next midnight exclusive.")
+            history = await call("get_messages", {"conversation_id": CONVERSATION, "start_time": DAY_START, "end_time": DAY_END})
             for message in reversed(history.structuredContent["items"]):
                 timestamp = datetime.fromtimestamp(message["timestamp"], timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
                 body = message["text"] or "Attachment: " + ", ".join(item["display_name"] for item in message["attachments"])
@@ -131,6 +145,14 @@ async def print_demo_evidence() -> None:
             evidence = search.structuredContent
             print(f"\nBounded search for '500': {len(evidence['items'])} matches in {evidence['scanned']} scanned messages. Incomplete: {evidence['incomplete']}.")
             print("An incomplete search does not establish that older matching messages are absent.")
+            selected = await call("search_messages", {"conversation_ids": [CONVERSATION, SUPPLIER_CONVERSATION], "query": "500", "start_time": DAY_START, "end_time": DAY_END})
+            evidence = selected.structuredContent
+            if len(history.structuredContent["items"]) != 8 or len(evidence["items"]) != 3 or {item["conversation_id"] for item in evidence["items"]} != {CONVERSATION, SUPPLIER_CONVERSATION}:
+                raise ValueError("The scoped demo did not return the seeded evidence.")
+            print(f"\nSelected-chat search for '500' on 2026-11-09 UTC: {len(evidence['items'])} matches in {evidence['scanned']} scanned messages.")
+            for message in evidence["items"]:
+                print(f"{message['conversation_id']} | {message['id']} | {message['text']}")
+            print("The supplier's November 10 follow-up is outside this search range.")
     print("\nConnect your AI to the same fictional dataset with:")
     print("uvx --from git+https://github.com/knchst/AnyMessage anymessage demo --mcp")
     print("Ask it to distinguish approved changes, proposals, and missing evidence, with message IDs.")

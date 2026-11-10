@@ -6,12 +6,46 @@ import sys
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from conftest import USER, TABLE, create_database
+from conftest import OTHER_USER, USER, TABLE, create_database
 from test_attachments import RECOVERY_HINT, add_file, image_bytes
 import base64
 import hashlib
 import json
 from datetime import datetime
+
+
+async def check_scoped_search(client, tools):
+    schema = next(tool.inputSchema for tool in tools.tools if tool.name == "search_messages")
+    dates = schema["properties"]["start_time"]["anyOf"]
+    assert {"type": "integer", "minimum": -(2**63), "maximum": 2**63 - 1} in dates
+    selection = next(value for value in schema["properties"]["conversation_ids"]["anyOf"] if value["type"] == "array")
+    assert selection["minItems"] == 1 and selection["maxItems"] == 8
+    assert selection["items"]["maxLength"] == 512
+    assert schema["required"] == ["query"]
+    arguments = {"query": "你好", "conversation_ids": [USER, OTHER_USER], "start_time": 100, "end_time": 104, "scan_limit": 1}
+    first = await client.call_tool("search_messages", arguments)
+    assert not first.isError
+    assert first.structuredContent["scanned"] == 1 and first.structuredContent["items"] == []
+    cursor = first.structuredContent["next_cursor"]
+    hits = []
+    while cursor:
+        result = await client.call_tool("search_messages", {**arguments, "cursor": cursor})
+        assert not result.isError
+        hits.extend(result.structuredContent["items"])
+        cursor = result.structuredContent["next_cursor"]
+    assert len(hits) == 5
+    assert {item["conversation_id"] for item in hits} == {USER, OTHER_USER}
+    history = await client.call_tool("get_messages", {"conversation_id": USER, "start_time": 100, "end_time": 101})
+    assert not history.isError and len(history.structuredContent["items"]) == 3
+    for change in [{"start_time": True}, {"end_time": 104.0}, {"start_time": "100"},
+                   {"start_time": 2**63}, {"end_time": 100}, {"conversation_ids": []},
+                   {"conversation_ids": [USER, USER]}, {"conversation_ids": [str(i) for i in range(9)]},
+                   {"conversation_id": USER}, {"conversation_ids": None},
+                   {"conversation_ids": ["missing-chat", USER]}]:
+        invalid = await client.call_tool("search_messages", {**arguments, **change})
+        assert invalid.isError, change
+    assert (await client.call_tool("search_messages", {"query": "你好", "cursor": first.structuredContent["next_cursor"]})).isError
+    assert (await client.call_tool("search_messages", {**arguments, "end_time": 105, "cursor": first.structuredContent["next_cursor"]})).isError
 
 
 async def check_missing_attachment(client, message_id, reason):
@@ -130,6 +164,7 @@ async def test_stdio_protocol(source):
             assert all(
                 item.annotations.readOnlyHint and item.annotations.openWorldHint is False for item in tools.tools
             )
+            await check_scoped_search(client, tools)
             for name, args in [
                 ("status", {}),
                 ("list_conversations", {}),
@@ -208,6 +243,7 @@ async def test_loopback_http_protocol(source):
                     "list_attachments",
                     "read_attachment",
                 }
+                await check_scoped_search(client, tools)
                 result = await client.call_tool("status", {})
                 assert not result.isError
                 assert result.structuredContent["sources"][0]["state"] == "ready"

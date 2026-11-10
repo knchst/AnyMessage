@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
+- Add UTC Unix-second date bounds to history and text search, and search 1–8 explicitly selected conversations with a shared scan budget.
+- Bind dated and multi-chat continuation to the local account, selection, and bounds while retaining legacy unbounded single-chat cursors and all six MCP tools.
+- Extend the fictional demo with a supplier chat and actual MCP date-range and selected-chat calls.
 - Add source MCPB build and verification commands and manual Registry publication using GitHub OIDC.
 
 ## 0.4.0

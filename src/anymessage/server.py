@@ -14,6 +14,10 @@ from anymessage.settings import Settings
 from anymessage.wechat import WeChat
 
 
+ConversationId = Annotated[str, Field(strict=True, min_length=1, max_length=512)]
+EpochSecond = Annotated[int, Field(strict=True, ge=-(2**63), le=2**63 - 1)]
+
+
 def create_server(*, port: int = 8765, demo_settings: Settings | None = None) -> FastMCP:
     sources = {"wechat": WeChat(demo_settings) if demo_settings is not None else WeChat()}
     instructions = "Read-only local messages. Call status first. Searches are bounded and conversation-scoped. A locked source requires local per-database keys."
@@ -33,14 +37,14 @@ def create_server(*, port: int = 8765, demo_settings: Settings | None = None) ->
         return sources["wechat"].list_conversations(limit, offset)
 
     @server.tool(annotations=annotations)
-    def get_messages(conversation_id: Annotated[str, Field(min_length=1, max_length=512)], limit: Annotated[int, Field(ge=1, le=200)] = 50, cursor: Annotated[str | None, Field(max_length=4096)] = None) -> dict[str, Any]:
-        """Read one conversation's local messages across every available message shard. Reuse next_cursor for older messages."""
-        return sources["wechat"].get_messages(conversation_id, limit, cursor)
+    def get_messages(conversation_id: ConversationId, limit: Annotated[int, Field(ge=1, le=200)] = 50, cursor: Annotated[str | None, Field(max_length=4096)] = None, *, start_time: EpochSecond | None = None, end_time: EpochSecond | None = None) -> dict[str, Any]:
+        """Read one conversation's local messages, newest first. Optional UTC Unix-second bounds include start_time and exclude end_time. Reuse next_cursor with the same conversation and bounds for older messages."""
+        return sources["wechat"].get_messages(conversation_id, limit, cursor, start_time=start_time, end_time=end_time)
 
     @server.tool(annotations=annotations)
-    def search_messages(query: Annotated[str, Field(min_length=1, max_length=1000)], conversation_id: Annotated[str, Field(min_length=1, max_length=512)], limit: Annotated[int, Field(ge=1, le=200)] = 20, scan_limit: Annotated[int, Field(ge=1, le=10000)] = 1000, cursor: Annotated[str | None, Field(max_length=4096)] = None) -> dict[str, Any]:
-        """Search decoded text in one conversation. Report scanned count and truncation rather than claiming a full-history search."""
-        return sources["wechat"].search_messages(query, conversation_id, limit, scan_limit, cursor)
+    def search_messages(query: Annotated[str, Field(min_length=1, max_length=1000)], conversation_id: ConversationId | None = None, limit: Annotated[int, Field(ge=1, le=200)] = 20, scan_limit: Annotated[int, Field(ge=1, le=10000)] = 1000, cursor: Annotated[str | None, Field(max_length=4096)] = None, *, conversation_ids: Annotated[list[ConversationId] | None, Field(min_length=1, max_length=8)] = None, start_time: EpochSecond | None = None, end_time: EpochSecond | None = None) -> dict[str, Any]:
+        """Search decoded local text, newest first. Provide exactly one selector: conversation_id or 1–8 distinct conversation_ids. UTC Unix-second bounds include start_time and exclude end_time. scan_limit is shared across the selection. Continue with the original query, selection, and bounds. Cite each hit with both conversation_id and id; bare message ids can repeat across chats."""
+        return sources["wechat"].search_messages(query, conversation_id, limit, scan_limit, cursor, conversation_ids=conversation_ids, start_time=start_time, end_time=end_time)
 
     @server.tool(annotations=annotations)
     def list_attachments(conversation_id: Annotated[str, Field(min_length=1, max_length=512)], message_id: Annotated[str, Field(min_length=1, max_length=128)]) -> dict[str, Any]:

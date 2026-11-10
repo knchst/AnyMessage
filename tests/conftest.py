@@ -23,6 +23,8 @@ if not SQLCIPHER and not configured_sqlcipher:
     ) if path.is_file() and os.access(path, os.X_OK)), None)
 USER = "wxid_fixture"
 TABLE = "Msg_" + hashlib.md5(USER.encode()).hexdigest()
+OTHER_USER = "zz_selected_fixture"
+OTHER_TABLE = "Msg_" + hashlib.md5(OTHER_USER.encode()).hexdigest()
 
 
 @pytest.fixture(autouse=True)
@@ -74,6 +76,8 @@ def source(tmp_path, monkeypatch, request, sqlcipher):
     schema = f'CREATE TABLE "{TABLE}"(local_id INTEGER PRIMARY KEY,server_id INTEGER,local_type INTEGER,sort_seq INTEGER,real_sender_id INTEGER,create_time INTEGER,message_content BLOB,WCDB_CT_message_content INTEGER,compress_content BLOB); CREATE TABLE Name2Id(user_name TEXT); INSERT INTO Name2Id VALUES(\'sender_fixture\');'
     sqls["message/message_0.db"] = schema + f'INSERT INTO "{TABLE}" VALUES(1,101,1,1,1,100,CAST(\'你好 世界\' AS BLOB),0,NULL); INSERT INTO "{TABLE}" VALUES(2,102,1,2,1,100,X\'{compressed}\',4,NULL); INSERT INTO "{TABLE}" VALUES(3,103,3,3,1,101,X\'0102\',0,NULL);'
     sqls["message/message_1.db"] = schema + f'INSERT INTO "{TABLE}" VALUES(1,201,1,1,1,100,CAST(\'你好 世界\' AS BLOB),0,NULL); INSERT INTO "{TABLE}" VALUES(2,202,1,4,1,102,CAST(\'literal % _ and apostrophe \'\'\' AS BLOB),0,NULL);'
+    sqls["message/message_0.db"] += f'CREATE TABLE "{OTHER_TABLE}"(local_id INTEGER PRIMARY KEY,server_id INTEGER,local_type INTEGER,sort_seq INTEGER,real_sender_id INTEGER,create_time INTEGER,message_content BLOB); INSERT INTO "{OTHER_TABLE}" VALUES(1,301,1,1,1,100,CAST(\'Selected 你好\' AS BLOB)); INSERT INTO "{OTHER_TABLE}" VALUES(2,302,1,6,1,103,CAST(\'new selected record\' AS BLOB)); INSERT INTO "{OTHER_TABLE}" VALUES(3,303,1,7,1,104,X\'FF\');'
+    sqls["message/message_1.db"] += f'CREATE TABLE "{OTHER_TABLE}"(local_id INTEGER PRIMARY KEY,server_id INTEGER,local_type INTEGER,sort_seq INTEGER,real_sender_id INTEGER,create_time INTEGER,message_content BLOB); INSERT INTO "{OTHER_TABLE}" VALUES(1,401,1,1,1,100,CAST(\'Other selected 你好\' AS BLOB));'
     for relative, sql in sqls.items():
         key = os.urandom(32).hex() if request.param else None
         path = root / relative

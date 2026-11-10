@@ -39,6 +39,16 @@ The terminal also runs a search limited to the two newest messages.
 That search has no matches for `500` and reports `incomplete=true` because older messages remain.
 An empty incomplete result does not establish that the battery was never discussed.
 
+AnyMessage 0.5.0 preserves those eight project messages and adds two messages in `atlas-supplier-demo@chatroom`.
+Chen's supplier proposal mentions 500 mAh at 2026-11-09 09:01:30 UTC, message `message/message_0.db:1`.
+The follow-up is dated November 10 at 09:00 UTC, message `:2`.
+These ids also occur in the project chat, so cite the conversation id alongside each message id.
+
+The walkthrough calls `get_messages` with the November 9 UTC bounds, then calls `search_messages` with both conversation ids and the same bounds.
+The selected-chat search returns three `500` matches in nine inspected messages, prints each hit's conversation id, and excludes the November 10 follow-up.
+The two attachment records count toward the scan budget but do not match decoded text.
+See [the date-range recipe](recipes.md#search-selected-chats-within-a-date-range) for exact calls and timezone conversion.
+
 ## Connect your AI
 
 Create a separate server entry named `anymessage-demo` in a local MCP client.
