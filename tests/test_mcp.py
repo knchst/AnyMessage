@@ -67,6 +67,27 @@ async def check_missing_attachment(client, message_id, reason):
     return item["id"]
 
 
+async def check_message_context(client, tools):
+    schema = next(tool.inputSchema for tool in tools.tools if tool.name == "get_message_context")
+    assert schema["required"] == ["conversation_id", "message_id"]
+    for name in ("before", "after"):
+        assert schema["properties"][name] == {"default": 3, "maximum": 50, "minimum": 0, "title": name.title(), "type": "integer"}
+    search = await client.call_tool("search_messages", {"query": "你好", "conversation_id": USER})
+    hit = search.structuredContent["items"][0]
+    arguments = {"conversation_id": hit["conversation_id"], "message_id": hit["id"], "before": 1, "after": 1}
+    context = await client.call_tool("get_message_context", arguments)
+    assert not context.isError
+    result = context.structuredContent
+    assert [item["id"] for item in result["items"]] == ["message/message_1.db:1", "message/message_0.db:2", "message/message_0.db:3"]
+    assert result["anchor_index"] == 1 and result["has_more_before"] and result["has_more_after"]
+    assert result["items"][1] == hit
+    assert json.loads(context.content[0].text) == result
+    for change in ({"before": True}, {"after": 1.0}, {"before": "1"}, {"after": -1},
+                   {"before": 51}, {"message_id": 1}, {"conversation_id": 1},
+                   {"message_id": "message/message_0.db:01"}, {"message_id": "message/message_0.db:999"}):
+        assert (await client.call_tool("get_message_context", {**arguments, **change})).isError
+
+
 async def check_attachment_roundtrips(client, message_id, source):
     listing = await client.call_tool("list_attachments", {"conversation_id": USER, "message_id": message_id})
     assert not listing.isError
@@ -157,6 +178,7 @@ async def test_stdio_protocol(source):
                 "status",
                 "list_conversations",
                 "get_messages",
+                "get_message_context",
                 "search_messages",
                 "list_attachments",
                 "read_attachment",
@@ -165,6 +187,7 @@ async def test_stdio_protocol(source):
                 item.annotations.readOnlyHint and item.annotations.openWorldHint is False for item in tools.tools
             )
             await check_scoped_search(client, tools)
+            await check_message_context(client, tools)
             for name, args in [
                 ("status", {}),
                 ("list_conversations", {}),
@@ -239,11 +262,13 @@ async def test_loopback_http_protocol(source):
                     "status",
                     "list_conversations",
                     "get_messages",
+                    "get_message_context",
                     "search_messages",
                     "list_attachments",
                     "read_attachment",
                 }
                 await check_scoped_search(client, tools)
+                await check_message_context(client, tools)
                 result = await client.call_tool("status", {})
                 assert not result.isError
                 assert result.structuredContent["sources"][0]["state"] == "ready"

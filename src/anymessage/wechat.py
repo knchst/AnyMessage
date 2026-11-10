@@ -279,6 +279,28 @@ class WeChat:
 
     message_columns = {"local_id", "server_id", "local_type", "sort_seq", "real_sender_id", "create_time", "message_content"}
 
+    @staticmethod
+    def _message_reference(message_id: str) -> tuple[str, int]:
+        match = re.fullmatch(r"(message/message_\d+\.db):([1-9][0-9]{0,18})", message_id) if isinstance(message_id, str) and 1 <= len(message_id) <= 128 else None
+        if match is None or int(match[2]) > 2**63 - 1:
+            raise SourceError("message_id_invalid", "Use a message id returned for this conversation.")
+        return match[1], int(match[2])
+
+    @staticmethod
+    def _message_select(table: str, columns: set[str], rank: int = 0, *, with_sender: bool = True) -> str:
+        compressed = "hex(m.compress_content)" if "compress_content" in columns else "NULL"
+        packed = "hex(m.packed_info_data)" if "packed_info_data" in columns else "NULL"
+        marker = "m.WCDB_CT_message_content" if "WCDB_CT_message_content" in columns else "NULL"
+        sender = "n.user_name" if with_sender else "NULL"
+        join = " LEFT JOIN Name2Id n ON n.rowid=m.real_sender_id" if with_sender else ""
+        return f'SELECT m.local_id,m.server_id,m.local_type,m.sort_seq,m.real_sender_id,m.create_time,hex(m.message_content) AS body_hex,{sender} AS sender,{compressed} AS compressed_hex,{marker} AS compression,{packed} AS packed_hex,{rank} AS chat_rank FROM "{table}" m{join}'
+
+    def _exact_message(self, root: Path, keys: dict[str, dict[str, str]], relative: str, table: str, columns: set[str], local_id: int, *, with_sender: bool = True) -> dict[str, Any]:
+        rows = self.query(root, relative, self._message_select(table, columns, with_sender=with_sender) + f" WHERE m.local_id={local_id} LIMIT 2", keys)
+        if len(rows) != 1:
+            raise SourceError("message_not_found", "No unique message matches this conversation and message id.")
+        return rows[0]
+
     def _message_context(self, scope: MessageScope, cursor: str | None) -> tuple[Path, dict[str, dict[str, str]], ShardTables, Position | None, str]:
         root, keys = self.selected_root(), self.keys()
         shards = self.shards(root)
@@ -305,30 +327,28 @@ class WeChat:
             raise SourceError("conversation_not_found", "No message table was found for conversation ids: " + ", ".join(missing))
         return root, keys, selected, before, digest
 
-    def _read_window(self, scope: MessageScope, root: Path, keys: dict[str, dict[str, str]], shard_tables: ShardTables, before: Position | None, limit: int) -> MessageWindow:
+    def _read_window(self, scope: MessageScope, root: Path, keys: dict[str, dict[str, str]], shard_tables: ShardTables, boundary: Position | None, limit: int, *, newer: bool = False) -> MessageWindow:
         top: list[tuple[Position, dict[str, Any]]] = []
+        comparison, order = (">", "ASC") if newer else ("<", "DESC")
         for relative, tables in shard_tables:
             if not tables:
                 continue
             branches = []
             for rank, table, columns in tables:
-                compressed = "hex(m.compress_content)" if "compress_content" in columns else "NULL"
-                packed = "hex(m.packed_info_data)" if "packed_info_data" in columns else "NULL"
-                marker = "m.WCDB_CT_message_content" if "WCDB_CT_message_content" in columns else "NULL"
                 predicates = []
                 if scope.start is not None:
                     predicates.append(f"m.create_time >= {scope.start}")
                 if scope.end is not None:
                     predicates.append(f"m.create_time < {scope.end}")
-                if before is not None:
-                    timestamp, sequence, shard, local_id, chat_rank = before
-                    predicates.append(f"(m.create_time,m.sort_seq,{sql_text(relative)},m.local_id,{rank}) < ({timestamp},{sequence},{sql_text(shard)},{local_id},{chat_rank})")
+                if boundary is not None:
+                    timestamp, sequence, shard, local_id, chat_rank = boundary
+                    predicates.append(f"(m.create_time,m.sort_seq,{sql_text(relative)},m.local_id,{rank}) {comparison} ({timestamp},{sequence},{sql_text(shard)},{local_id},{chat_rank})")
                 predicate = " WHERE " + " AND ".join(predicates) if predicates else ""
-                branches.append(f'SELECT m.local_id,m.server_id,m.local_type,m.sort_seq,m.real_sender_id,m.create_time,hex(m.message_content) AS body_hex,n.user_name AS sender,{compressed} AS compressed_hex,{marker} AS compression,{packed} AS packed_hex,{rank} AS chat_rank FROM "{table}" m LEFT JOIN Name2Id n ON n.rowid=m.real_sender_id{predicate}')
-            sql = " UNION ALL ".join(branches) + f" ORDER BY create_time DESC,sort_seq DESC,local_id DESC,chat_rank DESC LIMIT {limit + 1}"
+                branches.append(self._message_select(table, columns, rank) + predicate)
+            sql = " UNION ALL ".join(branches) + f" ORDER BY create_time {order},sort_seq {order},local_id {order},chat_rank {order} LIMIT {limit + 1}"
             rows = self.query(root, relative, sql, keys)
             top.extend(((int(row["create_time"]), int(row["sort_seq"]), relative, int(row["local_id"]), row["chat_rank"]), row) for row in rows)
-            top.sort(key=lambda item: item[0], reverse=True)
+            top.sort(key=lambda item: item[0], reverse=not newer)
             del top[limit + 1:]
         return MessageWindow(top[:limit], len(top) > limit)
 
@@ -358,25 +378,37 @@ class WeChat:
         items = [self._decode_message(scope, digest, position, row) for position, row in window.rows]
         return {"items": items, "next_cursor": items[-1]["cursor"] if window.more else None, "shards_checked": len(shards), "coverage": "local_message_shards", "snapshot_consistency": "per_query", **scope.metadata()}
 
+    def get_message_context(self, conversation_id: str, message_id: str, *, before: int = 3, after: int = 3) -> dict[str, Any]:
+        scope = MessageScope.parse(conversation_id, None, None, None)
+        request_integer("before", before, 0, 50)
+        request_integer("after", after, 0, 50)
+        relative, local_id = self._message_reference(message_id)
+        root, keys, shards, _, digest = self._message_context(scope, None)
+        tables = next((tables for shard, tables in shards if shard == relative), [])
+        if not tables:
+            raise SourceError("message_not_found", "This message is not available in the selected conversation and shard.")
+        _, table, columns = tables[0]
+        row = self._exact_message(root, keys, relative, table, columns, local_id)
+        position = (int(row["create_time"]), int(row["sort_seq"]), relative, local_id, 0)
+        older = self._read_window(scope, root, keys, shards, position, before)
+        newer = self._read_window(scope, root, keys, shards, position, after, newer=True)
+        rows = [*reversed(older.rows), (position, row), *newer.rows]
+        items = [self._decode_message(scope, digest, point, record) for point, record in rows]
+        return {"items": items, "anchor_index": len(older.rows), "conversation_id": conversation_id, "message_id": message_id, "has_more_before": older.more, "has_more_after": newer.more, "shards_checked": len(shards), "coverage": "local_message_shards", "snapshot_consistency": "per_query"}
+
     def attachment_context(self, conversation_id: str, message_id: str) -> Attachments:
-        match = re.fullmatch(r"(message/message_\d+\.db):([1-9]\d{0,18})", message_id)
-        if match is None:
-            raise SourceError("message_id_invalid", "Use a message id returned for this conversation.")
-        relative, local_id = match.groups()
+        scope = MessageScope.parse(conversation_id, None, None, None)
+        relative, local_id = self._message_reference(message_id)
         root, keys = self.selected_root(), self.keys()
         if relative not in self.shards(root):
             raise SourceError("message_not_found", "The message shard is not available.")
-        table = "Msg_" + hashlib.md5(conversation_id.encode()).hexdigest()
+        table = "Msg_" + hashlib.md5(scope.ids[0].encode()).hexdigest()
         schema = self.schema(root, relative, keys)
         if table not in schema:
             raise SourceError("message_not_found", "This message does not belong to the selected conversation.")
         columns = self.require_table(schema, table, self.message_columns, relative)
-        compressed = ",hex(compress_content) AS compressed_hex" if "compress_content" in columns else ",NULL AS compressed_hex"
-        packed = ",hex(packed_info_data) AS packed_hex" if "packed_info_data" in columns else ",NULL AS packed_hex"
-        rows = self.query(root, relative, f'SELECT local_id,server_id,local_type,create_time,hex(message_content) AS body_hex{compressed}{packed} FROM "{table}" WHERE local_id={int(local_id)} LIMIT 2', keys)
-        if len(rows) != 1:
-            raise SourceError("message_not_found", "No unique message matches this conversation and message id.")
-        return Attachments(self, root, keys, conversation_id, rows[0], message_id)
+        row = self._exact_message(root, keys, relative, table, columns, local_id, with_sender=False)
+        return Attachments(self, root, keys, conversation_id, row, message_id)
 
     def list_attachments(self, conversation_id: str, message_id: str) -> dict[str, Any]:
         return self.attachment_context(conversation_id, message_id).list()

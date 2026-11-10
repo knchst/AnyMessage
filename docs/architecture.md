@@ -27,7 +27,7 @@ Different conversation tables can reuse the same `local_id` in one shard.
 History and search order is descending `(create_time, sort_seq, shard_path, local_id, conversation_rank)`.
 Ranks enumerate the sorted explicit selection, including chats with no rows in the time range.
 The same tuple forms the cursor bound, so ties across chats and shards remain reachable.
-Every discovered `message_N.db` is checked before returning history or search.
+Every discovered `message_N.db` is checked before returning history, context, or search.
 A missing key or unreadable shard fails the call.
 A selected chat with no table in any shard returns `conversation_not_found`; an existing table with no in-range rows returns an empty result.
 
@@ -35,7 +35,8 @@ The frozen `MessageScope` owns the canonical selection and optional UTC Unix-sec
 The source validates exactly one selector, 1–8 distinct ids, and strict signed 64-bit integer seconds before account access.
 Date predicates include `start_time` and exclude `end_time`; when both are present, start must be less than end.
 Each shard query combines only selected tables with `UNION ALL` and applies one ordered row limit.
-`_read_window` merges at most `n+1` raw rows per shard and retains only the newest `n+1` candidates, with `n <= 200`.
+`_read_window` merges at most `n+1` raw rows per shard and retains the nearest `n+1` candidates in the requested direction, with `n <= 200`.
+History and search use descending selection; context uses descending older and ascending newer selection.
 This bounds returned row counts, not SQLite disk reads, bytes, or latency.
 Schema checks run once per shard per call, independently of the number of search windows.
 
@@ -61,6 +62,24 @@ Only inspected rows are decoded; raw lookahead rows establish continuation witho
 Search results retain the singular coverage label for singleton scopes and use `decoded_local_text_in_selected_conversations` for multiple chats.
 Results echo the canonical selection and date bounds, checked shards, and per-query consistency.
 `truncated` means a cursor remains; `incomplete` also includes decoding failures.
+
+## Read an exact message neighborhood
+
+`get_message_context` validates one conversation/message pair and strict `before` and `after` counts of 0–50 before account access.
+Message IDs retain the existing shard matcher and discovered spelling, including zero padding.
+Their local id is canonical positive ASCII decimal within signed 64-bit range.
+The source prepares every supported message shard with an unbounded singleton `MessageScope`, then queries only the named shard and conversation table for the anchor with `LIMIT 2`.
+No conversation table anywhere returns `conversation_not_found`; an absent or non-unique anchor in an existing chat returns `message_not_found`.
+Key, schema, and read errors propagate.
+
+The anchor's full `Position` bounds two strict tuple comparisons.
+Older candidates use `<` and descending order; newer candidates use `>` and ascending order so trimming retains the nearest newer rows.
+The cross-shard merge includes the shard path even though it is constant within each SQL query.
+One lookahead record per side establishes `has_more_before` and `has_more_after`, including when the requested count is zero.
+The source reverses the retained older rows, inserts the anchor once, and appends newer rows to present chronological `items` with a zero-based `anchor_index`.
+The result echoes scalar conversation and message ids and local coverage without a `next_cursor`.
+Unsupported and decode-failed records retain their positions; the existing decoder preserves sender and attachment identity.
+Every SQL query observes its own committed state, including queries within one shard, so the neighborhood is not an atomic snapshot.
 
 ## Keep secrets outside the protocol
 
@@ -119,12 +138,14 @@ See [the demo](demo.md) for the evidence and lifecycle.
 
 ## Bind attachments to a message
 
-`get_messages` derives attachment descriptors from its existing message rows.
-It does not open an attachment index or inspect the filesystem.
+History, context, and search hits derive attachment descriptors from their existing message rows.
+They do not open an attachment index or inspect the filesystem.
 File app messages use bounded XML decoding, preferring `compress_content` when present and removing a group sender prefix only for attachment XML.
 The history and search text representation does not change.
 
 Attachment calls validate the shard and local id, open only that shard, and re-read the exact row under the requested conversation table.
+They share ID parsing, row projection, and unique exact lookup with context, while omitting the sender join.
+Exact attachment reads do not require `Name2Id` or access to unrelated message shards.
 Attachment ids include the conversation, message identity, server id, metadata, and variant.
 They grant no path access outside that rehydrated message.
 File resolution matches the message's name, digest, and size in `file_hardlink_info_v4` and resolves `dir1` and `dir2` through `dir2id`.

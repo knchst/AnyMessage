@@ -110,8 +110,9 @@ After confirming the original application is restored and the manifest is safely
 
 ## Read local attachments
 
-After reader setup, reload the client's MCP connection to expose all six tools.
+After reader setup, reload the client's MCP connection to expose all seven tools in AnyMessage 0.6.0 or later.
 Call `get_messages`, then `list_attachments` and `read_attachment` with the returned message and attachment ids.
+For a search hit, pass its conversation/message pair to `get_message_context` to read nearby records before selecting an attachment.
 Attachment reads reuse local files and keys.
 They do not start capture, restart WeChat, or download a missing cache variant.
 

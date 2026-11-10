@@ -10,7 +10,7 @@ AI 负责分析，AnyMessage 返回消息、来源 ID、查询范围和支持的
 
 ![Atlas 虚构项目的 MCP 输出回放](.github/assets/demo.gif)
 
-这是实际 MCP 输出的编辑回放，播放时间经过调整，回放过程不调用 AI。
+这是 0.4.0 原始 Atlas 演示的 MCP 输出回放，播放时间经过调整，不调用 AI，也未展示后续版本的上下文读取。
 [观看 30 秒视频](.github/assets/demo.mp4)。
 
 ## 先试一个虚构项目
@@ -30,6 +30,7 @@ uvx --from git+https://github.com/knchst/AnyMessage anymessage demo
 终端演示只展示工具返回的证据，不调用 AI，也不自动生成分析结论。
 虚构的 Atlas 项目里有已批准的电池变更、尚未确认的交期和无法读取的图纸。
 AnyMessage 0.5.0 的终端演示还会读取指定 UTC 日期的消息，并同时搜索项目群和供应商群。
+AnyMessage 0.6.0 会把实际搜索命中的提案传给 `get_message_context`，读取相邻的批准消息与规格附件。
 
 | 事项 | 人工核对的结论 | 消息来源 |
 | --- | --- | --- |
@@ -78,13 +79,14 @@ anymessage doctor
 ## 当前支持范围
 
 - 当前数据源为微信 4.x；已验证的环境是 Apple Silicon 和微信 4.1.15，其他版本需要验证。
-- 支持会话列表、按时间范围分页读取消息、在明确选择的 1–8 个会话内共享扫描额度的文本搜索，以及支持格式的本地附件读取。
+- 七个工具均为只读，支持会话列表、按时间范围分页读取消息、指定消息的上下文、在明确选择的 1–8 个会话内共享扫描额度的文本搜索，以及支持格式的本地附件读取。
 - 文档包括 PDF、DOCX、XLSX、PPTX 和 Unicode 文本；支持部分原始图片及 V2 图片缓存。
 - 未实现发送、删除、云端聊天同步、全会话搜索、语义搜索、OCR、语音和视频解码。
 - 本地不存在的附件不会自动下载；缩略图和原图分别标识。
 
 先调用 `status`，再用 `list_conversations` 获取会话 ID。
 按时间范围读取与多会话搜索需要 AnyMessage 0.5.0 或更新版本。
+指定消息的上下文读取需要 AnyMessage 0.6.0 或更新版本。
 `get_messages` 接受一个 `conversation_id`。
 `search_messages` 必须且只能提供 `conversation_id` 或 `conversation_ids`，后者需要 1–8 个不重复的 ID，空列表不代表全部会话。
 两者都接受可选的 `start_time` 和 `end_time`，使用严格的 64 位 UTC Unix 秒整数，范围包含起点、不包含终点。
@@ -98,6 +100,16 @@ anymessage doctor
 `scanned` 统计本次实际检查的记录，包含不支持的消息类型和解码失败，不包含额外预取的记录。
 `conversation_ids`、`start_time` 和 `end_time` 返回本次范围；`snapshot_consistency="per_query"` 表示不同数据库分别读取已提交状态。
 日期转换和继续查询示例见[使用示例](docs/recipes.md#search-selected-chats-within-a-date-range)。
+把搜索命中的 `conversation_id` 和 `id` 分别传给 `get_message_context` 的 `conversation_id` 和 `message_id`。
+`before`、`after` 均为严格整数，范围 0–50，默认各 3 条，包含不支持的类型和解码失败记录。
+结果按时间从旧到新排列，最多 101 条；目标消息只出现一次，`anchor_index` 是从 0 开始的位置。
+`has_more_before`、`has_more_after` 表示各侧是否还有本地记录，即使请求数量为 0 也会检查。
+结果返回单个 `conversation_id` 和 `message_id`，不提供 `next_cursor`。
+会话存在但目标缺失或不唯一时返回 `message_not_found`；所有分片都没有该会话表时返回 `conversation_not_found`。
+消息 ID 保留原分片名称，本地 ID 必须是无前导零的正 ASCII 十进制整数，且不超过 `9223372036854775807`。
+上下文会检查所有支持的消息分片；缺少密钥或无法读取时直接失败，不返回局部结果。
+`coverage="local_message_shards"` 仅表示本地范围，`snapshot_consistency="per_query"` 表示每条 SQL 查询分别读取已提交状态，不保证整个窗口为同一快照。
+具体调用见[读取搜索命中的上下文](docs/recipes.md#inspect-a-search-hit)。
 未找到缓存不能单独证明附件已删除或已过期。
 
 读取在本机进行，但 AI 客户端可能把返回的内容发送给模型服务商。

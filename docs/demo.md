@@ -49,6 +49,14 @@ The selected-chat search returns three `500` matches in nine inspected messages,
 The two attachment records count toward the scan budget but do not match decoded text.
 See [the date-range recipe](recipes.md#search-selected-chats-within-a-date-range) for exact calls and timezone conversion.
 
+AnyMessage 0.6.0 then passes the returned project proposal's conversation/message pair into `get_message_context` with `before=1` and `after=2`.
+The chronological window contains messages `:1` through `:4`, with the proposal at `anchor_index=1`.
+The terminal prints Maya's adjacent approval, Chen's specification attachment, and the attachment's verified read state.
+It reports `has_more_before=false`, `has_more_after=true`, `coverage="local_message_shards"`, and `snapshot_consistency="per_query"`.
+The eight project rows, two supplier rows, and three selected-search hits in nine scanned messages are unchanged.
+See [inspect a search hit](recipes.md#inspect-a-search-hit) for the exact request.
+The README's video and GIF retain the original 0.4.0 investigation; they do not show this later context flow.
+
 ## Connect your AI
 
 Create a separate server entry named `anymessage-demo` in a local MCP client.
