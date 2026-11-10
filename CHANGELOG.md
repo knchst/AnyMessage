@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add `missing_reason` and fixed manual recovery guidance for attachment index queries with no match and unavailable cache files, while preserving `attachment_missing` and attachment ids.
+
 ## 0.3.0
 
 - Add row-only attachment metadata to message history and two read-only MCP tools, `list_attachments` and `read_attachment`.
