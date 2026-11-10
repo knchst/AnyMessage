@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add source MCPB build and verification commands and manual Registry publication using GitHub OIDC.
+
 ## 0.4.0
 
 - Include extracted attachment pages in structured MCP results so clients such as Claude Code can read the document text.

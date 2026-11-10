@@ -49,6 +49,7 @@ anymessage setup
 ```
 
 Homebrew installs Python and SQLCipher with AnyMessage.
+For a host supporting MCPB 0.4 and UV, see [MCPB requirements and distribution](docs/distribution.md).
 Setup reuses existing valid keys and registers Codex by default.
 It checks account selection and the core conversation and message databases before saving configuration references.
 When several accounts exist, setup asks you to choose one.

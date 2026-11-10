@@ -7,6 +7,7 @@ Keep actual messages, account identifiers, database files, keys, screenshots, de
 See [SECURITY.md](SECURITY.md) for vulnerabilities.
 
 For trial feedback, use [the trial guide](docs/pilot.md) and its public issue form.
+For reviewed MCPB assets and the manual Registry workflow, see [distribution](docs/distribution.md).
 Maintainers can capture read-only GitHub growth snapshots with `python3 scripts/measure_growth.py`; the guide explains the 14-day traffic limits.
 
 ## Set up development

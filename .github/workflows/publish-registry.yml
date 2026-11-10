@@ -1,0 +1,57 @@
+name: Publish MCP Registry metadata
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag with reviewed MCPB and server.json assets
+        required: true
+        default: v0.4.0
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.repository == 'knchst/AnyMessage' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      MCP_PUBLISHER_VERSION: v1.8.8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download the reviewed release pair
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern server.json --pattern "anymessage-${RELEASE_TAG#v}.mcpb" \
+            --dir "$RUNNER_TEMP/anymessage-release"
+          python3 scripts/check_mcpb.py "$RUNNER_TEMP/anymessage-release/server.json" --tag "$RELEASE_TAG"
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Verify and install the pinned publisher
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          archive="mcp-publisher_linux_amd64.tar.gz"
+          base_url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"
+          curl --fail --location --silent --show-error --output "$archive" "$base_url/$archive"
+          curl --fail --location --silent --show-error --output "$archive.sigstore.json" "$base_url/$archive.sigstore.json"
+          cosign verify-blob --bundle "$archive.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/${MCP_PUBLISHER_VERSION}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" "$archive"
+          tar xzf "$archive" mcp-publisher
+          ./mcp-publisher validate "$RUNNER_TEMP/anymessage-release/server.json"
+      - name: Publish Registry metadata with GitHub OIDC
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish "$RUNNER_TEMP/anymessage-release/server.json"
