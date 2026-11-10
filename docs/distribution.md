@@ -14,7 +14,7 @@ Keep each host's actual installation results separate from these checks.
 
 ## Use the published bundle
 
-Download [AnyMessage 0.5.0 MCPB](https://github.com/knchst/AnyMessage/releases/download/v0.5.0/anymessage-0.5.0.mcpb) from the [release page](https://github.com/knchst/AnyMessage/releases/tag/v0.5.0).
+Download [AnyMessage 0.6.0 MCPB](https://github.com/knchst/AnyMessage/releases/download/v0.6.0/anymessage-0.6.0.mcpb) from the [release page](https://github.com/knchst/AnyMessage/releases/tag/v0.6.0).
 If you already configured AnyMessage, the bundle uses those saved account references.
 For a new account setup, read the [first-time setup guide](wechat-setup.md), then run:
 
@@ -59,7 +59,10 @@ uv run --frozen python scripts/check_mcpb.py dist/registry-0.4.0/server.json --t
 
 Use a verified official `mcp-publisher` release.
 The runtime check needs SQLCipher and a working `uv` command; `--uv /absolute/path/to/uv` selects another launcher.
-It extracts into a temporary path containing spaces, sets explicit nonexistent account references, checks six read-only tools and unconfigured status, and reads eight synthetic demo messages.
+It extracts into a temporary path containing spaces, sets explicit nonexistent account references, checks the version's read-only tool inventory and unconfigured status, and reads eight synthetic demo messages.
+The verified numeric release version selects the original six tools for releases before 0.6.0 and seven tools including `get_message_context` from 0.6.0 onward.
+For those newer releases, it also follows an actual search hit to the adjacent approval and verified specification attachment.
+The check prints the observed tool count; the immutable 0.4.0 example above still expects six.
 It does not read an actual account.
 Review the archive inventory and `server.json` before uploading.
 

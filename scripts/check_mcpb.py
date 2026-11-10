@@ -46,6 +46,10 @@ async def main() -> None:
         project = tomllib.loads(archive.read("pyproject.toml").decode())["project"]
         if project["name"] != "anymessage" or project["version"] != version:
             raise ValueError("The bundled project and release versions disagree.")
+        supports_context = tuple(int(part) for part in version.split(".")) >= (0, 6, 0)
+        expected_tools = {"status", "list_conversations", "get_messages", "search_messages", "list_attachments", "read_attachment"}
+        if supports_context:
+            expected_tools.add("get_message_context")
         required = {"README.md", "README.zh-CN.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "tools/wechat-bootstrap/LICENSE", "tools/wechat-bootstrap/bootstrap_keys.py", "tools/wechat-bootstrap/capture_keys.py", "uv.lock", "src/anymessage/server.py", "docs/demo.md", ".github/assets/demo.gif"}
         if not required <= set(names):
             raise ValueError("The bundle is missing runtime, documentation, or license files.")
@@ -65,7 +69,8 @@ async def main() -> None:
                 async with ClientSession(read, write) as client:
                     await client.initialize()
                     tools = await client.list_tools()
-                    assert {tool.name for tool in tools.tools} == {"status", "list_conversations", "get_messages", "search_messages", "list_attachments", "read_attachment"}
+                    assert {tool.name for tool in tools.tools} == expected_tools
+                    observed_count = len(tools.tools)
                     assert all(tool.annotations and tool.annotations.readOnlyHint and tool.annotations.openWorldHint is False for tool in tools.tools)
                     status = await client.call_tool("status", {})
                     assert status.structuredContent["sources"][0]["state"] == "data_missing"
@@ -76,7 +81,24 @@ async def main() -> None:
                     assert status.structuredContent["dataset"] == "synthetic" and status.structuredContent["sources"][0]["state"] == "ready"
                     history = await client.call_tool("get_messages", {"conversation_id": "atlas-demo@chatroom", "limit": 20})
                     assert len(history.structuredContent["items"]) == 8
-            print("Extracted bundle passed six read-only tools, unconfigured status, and eight synthetic messages outside the checkout.")
+                    if supports_context:
+                        search = await client.call_tool("search_messages", {"conversation_id": "atlas-demo@chatroom", "query": "Proposal:"})
+                        assert not search.isError
+                        hit = search.structuredContent["items"][0]
+                        context = await client.call_tool("get_message_context", {"conversation_id": hit["conversation_id"], "message_id": hit["id"], "before": 1, "after": 2})
+                        assert not context.isError
+                        neighborhood = context.structuredContent
+                        assert neighborhood["anchor_index"] == 1 and neighborhood["items"][1] == hit
+                        assert neighborhood["items"][2]["sender_id"] == "Maya" and neighborhood["items"][2]["text"].startswith("Approved:")
+                        specification = neighborhood["items"][3]
+                        assert specification["attachments"][0]["display_name"] == "atlas-spec-v2.txt"
+                        attachment = await client.call_tool("read_attachment", {"conversation_id": specification["conversation_id"], "message_id": specification["id"], "attachment_id": specification["attachments"][0]["id"]})
+                        assert not attachment.isError and attachment.structuredContent["content_verified"]
+                        assert neighborhood["has_more_before"] is False and neighborhood["has_more_after"] is True
+                        assert neighborhood["snapshot_consistency"] == "per_query"
+            print(f"Extracted bundle passed {observed_count} read-only tools, unconfigured status, and eight synthetic messages outside the checkout.")
+            if supports_context:
+                print("Search-hit context returned the adjacent approval and verified specification attachment.")
 
 
 if __name__ == "__main__":

@@ -12,10 +12,10 @@ After trying it, [report whether it helped](docs/pilot.md).
 
 ![Replay of the fictional Atlas investigation](.github/assets/demo.gif)
 
-Replay of a verified MCP run. Playback timing is edited; this replay does not call an AI model.
+Replay of the original 0.4.0 Atlas investigation. Playback timing is edited; this replay does not call an AI model or show later context retrieval.
 [Watch the 30-second video](.github/assets/demo.mp4) or [try the demo](#try-a-fictional-project).
 
-AnyMessage provides a read-only stdio server for conversation listing, text history retrieval, conversation-scoped search, and local attachment reading.
+AnyMessage provides a read-only stdio server for conversation listing, text history, exact-message context, conversation-scoped search, and local attachment reading.
 It reads local SQLCipher databases and committed WAL records without exporting a separate plaintext message archive.
 
 This project is an early implementation.
@@ -37,6 +37,7 @@ uvx --from git+https://github.com/knchst/AnyMessage anymessage demo
 
 The demo shows an approved battery change, an unconfirmed delivery date, and an unavailable drawing.
 AnyMessage 0.5.0 adds a UTC date range and searches the project and supplier chats together in the demo.
+AnyMessage 0.6.0 follows the proposal search hit to its adjacent approval and specification attachment with `get_message_context`.
 It prints source evidence without calling an AI model.
 Connect your own AI with `uvx --from git+https://github.com/knchst/AnyMessage anymessage demo --mcp`.
 With AnyMessage 0.4.0 or later installed, run `anymessage demo` or `anymessage demo --mcp` directly.
@@ -139,20 +140,22 @@ uv run anymessage setup --keys-file "/absolute/path/private/manifest.json"
 Checkout development needs Python 3.11 or later and [uv](https://docs.astral.sh/uv/).
 The repository does not assume a published PyPI package.
 
-All six tools advertise read-only behavior.
+All seven tools advertise read-only behavior.
 Call `status` first, then `list_conversations` to obtain a conversation id.
 Date bounds and selected-conversation search require AnyMessage 0.5.0 or later.
+Exact-message context requires AnyMessage 0.6.0 or later.
 
 | Tool | Inputs | Result |
 | --- | --- | --- |
 | `status` | None | Source installation, account selection, database inventory, keys and schema readiness. No message bodies. |
 | `list_conversations` | `limit` 1–200, `offset` 0–100000 | Newest-first local conversations, display names, summaries, and `next_offset`. |
 | `get_messages` | `conversation_id`, `limit` 1–200, optional `cursor`, `start_time`, `end_time` | Newest-first local messages across supported message shards, with `next_cursor`. |
+| `get_message_context` | `conversation_id`, `message_id`, optional `before` and `after` 0–50 each, default 3 | Exact anchor and nearest surrounding local records, oldest first, with `anchor_index` and `has_more_before` / `has_more_after`. |
 | `search_messages` | Literal `query`, exactly one of `conversation_id` or `conversation_ids` with 1–8 distinct ids, `limit` 1–200, `scan_limit` 1–10000, optional `cursor`, `start_time`, `end_time` | Newest-first decoded text matches across the selection, shared scanned count, coverage, and continuation. |
 | `list_attachments` | `conversation_id`, `message_id` | Message-bound attachment descriptors, separate image variants, and local cache availability. |
 | `read_attachment` | `conversation_id`, `message_id`, `attachment_id`, optional `offset`, `limit`, `as_binary` | Verified document text, a native MCP image, or an embedded binary resource, with metadata and continuation. |
 
-`get_messages` also returns row-derived `attachments` metadata without looking up files.
+`get_messages`, `get_message_context`, and search hits return row-derived `attachments` metadata without looking up files.
 Call `list_attachments` with the message id to check availability, then pass its attachment id to `read_attachment`.
 Extracted document pages are available as native MCP text and in the structured result's `text` field.
 PDF, DOCX, XLSX, PPTX, UTF-8 text, and BOM-marked UTF-16 text have bounded text views.
@@ -174,13 +177,21 @@ Unbounded single-chat calls retain legacy cursors, which cannot verify account i
 Cursors mark a message position rather than a query; changing the query resumes at that position and leaves newer messages unsearched for the new query.
 Cite and deduplicate messages by the pair `(conversation_id, id)`.
 The `id` contains the shard and local id and can repeat in another chat.
+To inspect a hit, pass its `conversation_id` and `id` as `message_id` to `get_message_context`.
+Context includes the anchor exactly once, at zero-based `anchor_index`, and returns at most 101 records in chronological order.
+`before` and `after` count records, including unsupported or decode-failed messages.
+Even when a count is zero, its `has_more_*` flag reports whether local records exist on that side.
+The result echoes scalar `conversation_id` and `message_id`; it has no `next_cursor`.
+An absent or ambiguous anchor in an existing chat returns `message_not_found`; no local table for the chat returns `conversation_not_found`.
+Message IDs retain the discovered shard spelling and use a canonical positive ASCII decimal local id no greater than `9223372036854775807`.
+See [inspect a search hit](docs/recipes.md#inspect-a-search-hit) for a complete call.
 Search is case-insensitive literal matching after decoding; SQL wildcard characters remain literal.
 `scanned` counts inspected records across all selected chats, including unsupported records and decoding failures, for the current call.
 Raw lookahead rows do not count and are not decoded. Search does not inspect attachment bodies.
 `truncated=true` means more records remain beyond the current result or scan limit.
 `incomplete=true` also covers text decoding failures.
 Unsupported non-text records are counted separately.
-History and search report checked shards and `snapshot_consistency="per_query"`; separate databases can reflect separate committed states.
+History, context, and search report checked shards and `snapshot_consistency="per_query"`; each SQL query can reflect a separate committed state.
 Local decoded text coverage does not establish complete cloud history.
 
 ## Configuration
@@ -238,7 +249,7 @@ Text history and search retain their existing text-only behavior; search does no
 Attachment reads use existing local caches and never download missing content.
 WeChat's retention and synchronization state determine which records exist locally.
 Queries spanning databases do not form one atomic snapshot.
-A missing key or unreadable supported shard fails history retrieval instead of silently returning partial history.
+A missing key or unreadable supported shard fails history, context, and search retrieval instead of silently returning partial results.
 
 The reader opens SQLCipher with `-readonly` and `query_only=ON`.
 SQLite can still use ordinary shared-memory and read-lock coordination for an active WAL database.

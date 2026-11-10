@@ -153,6 +153,21 @@ async def print_demo_evidence() -> None:
             for message in evidence["items"]:
                 print(f"{message['conversation_id']} | {message['id']} | {message['text']}")
             print("The supplier's November 10 follow-up is outside this search range.")
+            proposal = next(message for message in evidence["items"] if message["conversation_id"] == CONVERSATION and (message["text"] or "").startswith("Proposal:"))
+            context = await call("get_message_context", {"conversation_id": proposal["conversation_id"], "message_id": proposal["id"], "before": 1, "after": 2})
+            neighborhood = context.structuredContent
+            print(f"\nContext for search hit {proposal['conversation_id']} | {proposal['id']} (chronological):")
+            for index, message in enumerate(neighborhood["items"]):
+                body = message["text"] or "Attachment: " + ", ".join(item["display_name"] for item in message["attachments"])
+                print(f"{'Anchor' if index == neighborhood['anchor_index'] else 'Neighbor'} | {message['id']} | {message['sender_id']} | {body}")
+            approval = neighborhood["items"][neighborhood["anchor_index"] + 1]
+            specification = neighborhood["items"][neighborhood["anchor_index"] + 2]
+            if approval["sender_id"] != "Maya" or not (approval["text"] or "").startswith("Approved:") or specification["attachments"][0]["display_name"] != "atlas-spec-v2.txt":
+                raise ValueError("The context demo did not return the adjacent approval and specification.")
+            content = await call("read_attachment", {"conversation_id": specification["conversation_id"], "message_id": specification["id"], "attachment_id": specification["attachments"][0]["id"]})
+            print(f"Context attachment verified: {content.structuredContent['content_verified']}.")
+            print(f"Anchor index: {neighborhood['anchor_index']}. More before: {neighborhood['has_more_before']}. More after: {neighborhood['has_more_after']}.")
+            print(f"Coverage: {neighborhood['coverage']}. Snapshot consistency: {neighborhood['snapshot_consistency']}.")
     print("\nConnect your AI to the same fictional dataset with:")
     print("uvx --from git+https://github.com/knchst/AnyMessage anymessage demo --mcp")
     print("Ask it to distinguish approved changes, proposals, and missing evidence, with message IDs.")

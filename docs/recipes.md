@@ -89,9 +89,33 @@ The cursor marks the last inspected row, even when it did not match.
 `scan_limit` is a shared budget across all selected chats; `scanned` and failure counters describe only the current call.
 An empty incomplete page requires continuation before drawing a conclusion about older messages.
 
+## Inspect a search hit
+
+AnyMessage 0.6.0 adds `get_message_context` for an exact hit's nearest older and newer records.
+Pass both fields from the returned hit; bare message ids can repeat across conversations.
+For the Atlas project proposal returned by the selected-chat search, call:
+
+```json
+{"conversation_id":"atlas-demo@chatroom","message_id":"message/message_0.db:2","before":1,"after":2}
+```
+
+The chronological result contains the baseline `:1`, proposal `:2`, Maya's approval `:3`, and specification attachment `:4`.
+`anchor_index=1` identifies the proposal; the nearby approval establishes who approved the change.
+`has_more_before=false` and `has_more_after=true` describe the remaining local records.
+Pass the specification's conversation id, message id, and returned attachment id to `read_attachment` to verify its cached content.
+
+Each side defaults to 3 and accepts strict integers from 0 to 50.
+A zero-count side still reports whether local records remain there.
+Counts include unsupported and decode-failed records; the anchor appears once, and up to 101 records can be returned.
+Context is confined to that conversation but has no date restriction inherited from the search.
+Its local coverage and `snapshot_consistency="per_query"` do not establish complete history or an atomic snapshot.
+An absent or non-unique target in an existing chat fails with `message_not_found`; it never substitutes a nearby record.
+If the conversation has no local message table, the call fails with `conversation_not_found`.
+
 ## Verify the result
 
-Open the cited messages with `get_messages` and follow its returned cursor when more pages remain.
+Open a cited conversation/message pair with `get_message_context` to inspect its neighbors.
+For a broader history range, use `get_messages` and follow its returned cursor when more pages remain.
 Use `list_attachments` and `read_attachment` for the specific message, then check the returned availability and verification state.
 Abbreviated IDs in the first three recipes use the prefix `message/message_0.db:` and conversation `atlas-demo@chatroom`.
 The first three recipes use the project's November 9 UTC messages; the supplier chat also has a November 10 follow-up.

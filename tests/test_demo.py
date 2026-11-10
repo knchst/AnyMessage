@@ -55,7 +55,7 @@ async def test_demo_protocol_evidence_and_missing_drawing(monkeypatch, sqlcipher
             initialized = await client.initialize()
             assert initialized.serverInfo.name == "AnyMessage Demo"
             tools = await client.list_tools()
-            assert len(tools.tools) == 6
+            assert len(tools.tools) == 7
             assert all(tool.annotations.readOnlyHint for tool in tools.tools)
             status = await client.call_tool("status", {})
             assert status.structuredContent["dataset"] == "synthetic"
@@ -105,6 +105,19 @@ async def test_demo_protocol_evidence_and_missing_drawing(monkeypatch, sqlcipher
             assert len(scoped.structuredContent["items"]) == 3
             assert {item["conversation_id"] for item in scoped.structuredContent["items"]} == {CONVERSATION, SUPPLIER_CONVERSATION}
             assert not scoped.structuredContent["incomplete"]
+            proposal = next(item for item in scoped.structuredContent["items"] if item["conversation_id"] == CONVERSATION and (item["text"] or "").startswith("Proposal:"))
+            context = await client.call_tool("get_message_context", {"conversation_id": proposal["conversation_id"], "message_id": proposal["id"], "before": 1, "after": 2})
+            assert not context.isError
+            neighborhood = context.structuredContent
+            assert {key: value for key, value in neighborhood["items"][neighborhood["anchor_index"]].items() if key != "cursor"} == {key: value for key, value in proposal.items() if key != "cursor"}
+            assert [item["id"] for item in neighborhood["items"]] == [f"message/message_0.db:{index}" for index in range(1, 5)]
+            assert neighborhood["items"][2]["sender_id"] == "Maya"
+            assert neighborhood["items"][2]["text"].startswith("Approved:")
+            specification = neighborhood["items"][3]
+            assert specification["attachments"][0]["display_name"] == "atlas-spec-v2.txt"
+            content = await client.call_tool("read_attachment", {"conversation_id": specification["conversation_id"], "message_id": specification["id"], "attachment_id": specification["attachments"][0]["id"]})
+            assert content.structuredContent["content_verified"]
+            assert not neighborhood["has_more_before"] and neighborhood["has_more_after"]
             dated = await client.call_tool("get_messages", {"conversation_id": SUPPLIER_CONVERSATION, "start_time": DAY_START, "end_time": DAY_END})
             assert len(dated.structuredContent["items"]) == 1
             assert "Supplier proposal:" in dated.structuredContent["items"][0]["text"]
@@ -126,6 +139,12 @@ def test_demo_walkthrough_and_missing_sqlcipher(monkeypatch, sqlcipher, tmp_path
     assert "3 matches in 9 scanned messages" in result.stdout
     assert SUPPLIER_CONVERSATION in result.stdout
     assert "November 10 follow-up is outside" in result.stdout
+    assert "Context for search hit atlas-demo@chatroom | message/message_0.db:2" in result.stdout
+    assert "Neighbor | message/message_0.db:3 | Maya | Approved:" in result.stdout
+    assert "Neighbor | message/message_0.db:4 | Chen | Attachment: atlas-spec-v2.txt" in result.stdout
+    assert "Context attachment verified: True" in result.stdout
+    assert "Anchor index: 1. More before: False. More after: True" in result.stdout
+    assert "Snapshot consistency: per_query" in result.stdout
     monkeypatch.setenv("ANYMESSAGE_SQLCIPHER", str(tmp_path / "not-installed"))
     failed = subprocess.run([sys.executable, "-m", "anymessage.server", "demo"], capture_output=True, text=True, timeout=10)
     assert failed.returncode == 2

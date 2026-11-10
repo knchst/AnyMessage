@@ -42,6 +42,11 @@ def create_server(*, port: int = 8765, demo_settings: Settings | None = None) ->
         return sources["wechat"].get_messages(conversation_id, limit, cursor, start_time=start_time, end_time=end_time)
 
     @server.tool(annotations=annotations)
+    def get_message_context(conversation_id: ConversationId, message_id: Annotated[str, Field(strict=True, min_length=1, max_length=128)], *, before: Annotated[int, Field(strict=True, ge=0, le=50)] = 3, after: Annotated[int, Field(strict=True, ge=0, le=50)] = 3) -> dict[str, Any]:
+        """Read an exact message and its nearest older and newer local records in chronological order. Pass both conversation_id and id from a returned hit. The anchor appears once at anchor_index. Each side accepts 0–50 records; has_more_before and has_more_after describe remaining local records even when a count is zero. Queries are not an atomic snapshot."""
+        return sources["wechat"].get_message_context(conversation_id, message_id, before=before, after=after)
+
+    @server.tool(annotations=annotations)
     def search_messages(query: Annotated[str, Field(min_length=1, max_length=1000)], conversation_id: ConversationId | None = None, limit: Annotated[int, Field(ge=1, le=200)] = 20, scan_limit: Annotated[int, Field(ge=1, le=10000)] = 1000, cursor: Annotated[str | None, Field(max_length=4096)] = None, *, conversation_ids: Annotated[list[ConversationId] | None, Field(min_length=1, max_length=8)] = None, start_time: EpochSecond | None = None, end_time: EpochSecond | None = None) -> dict[str, Any]:
         """Search decoded local text, newest first. Provide exactly one selector: conversation_id or 1–8 distinct conversation_ids. UTC Unix-second bounds include start_time and exclude end_time. scan_limit is shared across the selection. Continue with the original query, selection, and bounds. Cite each hit with both conversation_id and id; bare message ids can repeat across chats."""
         return sources["wechat"].search_messages(query, conversation_id, limit, scan_limit, cursor, conversation_ids=conversation_ids, start_time=start_time, end_time=end_time)

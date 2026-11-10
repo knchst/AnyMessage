@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0
+
+- Add `get_message_context` to read an exact conversation/message pair with up to 50 nearest older and 50 nearest newer local records in chronological order.
+- Return the anchor once, its index, and remaining-record flags for each side, including zero-count requests. Preserve sender, decoding states, attachment IDs, and local per-query coverage.
+- Extend the fictional demo from a selected-chat search hit to the adjacent approval and verified specification attachment.
+- Verify seven read-only tools in current MCPB bundles while retaining the six-tool runtime check for historical releases before 0.6.0.
+
 ## 0.5.0
 
 - Add UTC Unix-second date bounds to history and text search, and search 1–8 explicitly selected conversations with a shared scan budget.
