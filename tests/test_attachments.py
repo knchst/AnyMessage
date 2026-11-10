@@ -26,6 +26,9 @@ from anymessage.wechat import SourceError
 from conftest import TABLE, USER, create_database
 
 
+RECOVERY_HINT = "Open this attachment in the same WeChat account and download it if offered. Then retry list_attachments for this message and read the selected attachment. Recovery is not guaranteed."
+
+
 def message_xml(name: str, data: bytes) -> bytes:
     return f"<msg><appmsg><title>{name}</title><type>6</type><md5>{hashlib.md5(data).hexdigest()}</md5><appattach><totallen>{len(data)}</totallen></appattach></appmsg></msg>".encode()
 
@@ -112,14 +115,18 @@ def test_file_read_and_pagination(source):
     listing = reader.list_attachments(USER, message_id)
     item = listing["items"][0]
     assert item["state"] == "available" and item["content_verified"] is False
+    assert "missing_reason" not in item and "recovery_hint" not in item
     result = reader.read_attachment(USER, message_id, item["id"], limit=10)
     assert result.text == "attachment" and result.metadata["next_offset"] == 10
+    assert "missing_reason" not in result.metadata and "recovery_hint" not in result.metadata
     result = reader.read_attachment(USER, message_id, item["id"], offset=10)
     assert result.text == " text\nsecond line" and result.metadata["next_offset"] is None
     result = reader.read_attachment(USER, message_id, item["id"], as_binary=True)
     assert result.data == path.read_bytes()
     path.write_bytes(b"tampered")
-    assert reader.read_attachment(USER, message_id, item["id"]).metadata["state"] == "attachment_integrity_failed"
+    result = reader.read_attachment(USER, message_id, item["id"])
+    assert result.metadata["state"] == "attachment_integrity_failed"
+    assert "missing_reason" not in result.metadata and "recovery_hint" not in result.metadata
 
 
 @pytest.mark.parametrize("encoding", ["utf-8", "utf-16"])
@@ -152,7 +159,9 @@ def test_unknown_text_controls_remain_unsupported(control):
 def test_metadata_never_looks_up_cache(source, monkeypatch):
     reader, _, message_id = add_file(source)
     monkeypatch.setattr(Attachments, "path_for", lambda *_: pytest.fail("history resolved files"))
-    assert reader.get_messages(USER)["items"][0]["attachments"]
+    item = reader.get_messages(USER)["items"][0]["attachments"][0]
+    assert item["state"] == "not_checked"
+    assert "missing_reason" not in item and "recovery_hint" not in item
 
 
 def test_message_bound_ids(source):
@@ -172,20 +181,32 @@ def test_no_filename_only_lookup_and_ambiguity(source):
     item = reader.list_attachments(USER, message_id)["items"][0]
     database = source[1] / "hardlink/hardlink.db"
     create_database(database, "UPDATE file_hardlink_info_v4 SET md5='" + "0" * 32 + "';", None)
-    assert reader.list_attachments(USER, message_id)["items"][0]["state"] == "attachment_missing"
-    assert reader.read_attachment(USER, message_id, item["id"]).data is None
+    missing = reader.list_attachments(USER, message_id)["items"][0]
+    result = reader.read_attachment(USER, message_id, item["id"])
+    assert missing["id"] == item["id"]
+    for metadata in (missing, result.metadata):
+        assert metadata["state"] == "attachment_missing"
+        assert metadata["missing_reason"] == "file_index_no_match"
+        assert metadata["recovery_hint"] == RECOVERY_HINT
+    assert result.data is None and result.text is None
     digest = hashlib.md5(path.read_bytes()).hexdigest()
     create_database(
         database,
         f"UPDATE file_hardlink_info_v4 SET md5='{digest}'; INSERT INTO dir2id VALUES('2024-02'); INSERT INTO file_hardlink_info_v4 SELECT md5,file_name,file_size,2,0 FROM file_hardlink_info_v4;",
         None,
     )
-    assert reader.list_attachments(USER, message_id)["items"][0]["state"] == "attachment_ambiguous"
+    ambiguous = reader.list_attachments(USER, message_id)["items"][0]
+    result = reader.read_attachment(USER, message_id, item["id"])
+    for metadata in (ambiguous, result.metadata):
+        assert metadata["state"] == "attachment_ambiguous"
+        assert "missing_reason" not in metadata and "recovery_hint" not in metadata
 
 
 @pytest.mark.parametrize("mutation", ["missing_db", "locked_db", "missing_file", "outside_path", "symlink"])
 def test_cache_failure_states(source, tmp_path, mutation):
     reader, path, message_id = add_file(source)
+    original = reader.list_attachments(USER, message_id)["items"][0]
+    data = path.read_bytes()
     expected = {
         "missing_db": "database_missing",
         "locked_db": "key_missing",
@@ -207,7 +228,42 @@ def test_cache_failure_states(source, tmp_path, mutation):
         outside.write_bytes(path.read_bytes())
         path.unlink()
         path.symlink_to(outside)
-    assert reader.list_attachments(USER, message_id)["items"][0]["state"] == expected
+    item = reader.list_attachments(USER, message_id)["items"][0]
+    result = reader.read_attachment(USER, message_id, original["id"])
+    assert item["id"] == original["id"]
+    for metadata in (item, result.metadata):
+        assert metadata["state"] == expected
+        if mutation == "missing_file":
+            assert metadata["missing_reason"] == "cache_file_unavailable"
+            assert metadata["recovery_hint"] == RECOVERY_HINT
+        else:
+            assert "missing_reason" not in metadata and "recovery_hint" not in metadata
+    assert result.data is None and result.text is None
+    if mutation == "missing_file":
+        path.write_bytes(data)
+        restored = reader.list_attachments(USER, message_id)["items"][0]
+        result = reader.read_attachment(USER, message_id, original["id"], as_binary=True)
+        assert restored["id"] == original["id"] and restored["state"] == "available"
+        assert result.data == data and result.metadata["state"] == "ready"
+        for metadata in (restored, result.metadata):
+            assert "missing_reason" not in metadata and "recovery_hint" not in metadata
+
+
+def test_unrelated_errors_do_not_gain_missing_diagnostics(source, monkeypatch):
+    reader, _, message_id = add_file(source)
+    item = reader.list_attachments(USER, message_id)["items"][0]
+    secret = "sentinel-secret-path-sql-key"
+
+    def fail(*_):
+        raise SourceError("attachment_missing", secret)
+
+    monkeypatch.setattr(Attachments, "path_for", fail)
+    listing = reader.list_attachments(USER, message_id)["items"][0]
+    result = reader.read_attachment(USER, message_id, item["id"])
+    for metadata in (listing, result.metadata):
+        assert metadata["state"] == "attachment_missing"
+        assert "missing_reason" not in metadata and "recovery_hint" not in metadata
+        assert secret not in str(metadata)
 
 
 def test_image_variants_and_decode(source):
@@ -234,9 +290,15 @@ def test_image_variants_and_decode(source):
     assert [item["state"] for item in items] == ["attachment_missing", "attachment_missing", "available"]
     result = reader.read_attachment(USER, "message/message_0.db:3", items[2]["id"])
     assert result.image and result.data == image_bytes() and result.mime_type == "image/jpeg"
-    assert (
-        reader.read_attachment(USER, "message/message_0.db:3", items[0]["id"]).metadata["state"] == "attachment_missing"
-    )
+    assert "missing_reason" not in result.metadata and "recovery_hint" not in result.metadata
+    assert "missing_reason" not in items[2] and "recovery_hint" not in items[2]
+    for item in items[:2]:
+        result = reader.read_attachment(USER, "message/message_0.db:3", item["id"])
+        assert result.data is None and result.text is None
+        for metadata in (item, result.metadata):
+            assert metadata["state"] == "attachment_missing"
+            assert metadata["missing_reason"] == "cache_file_unavailable"
+            assert metadata["recovery_hint"] == RECOVERY_HINT
 
 
 def test_image_key_selection_v2_and_padding(tmp_path):
@@ -413,7 +475,25 @@ def test_image_resource_fallback_is_message_scoped(source):
     assert items[-1]["state"] == "available"
     assert reader.read_attachment(USER, "message/message_0.db:3", items[-1]["id"]).image
     create_database(root / relative, "UPDATE MessageResourceInfo SET message_svr_id=999;", None)
-    assert reader.list_attachments(USER, "message/message_0.db:3")["items"][-1]["state"] == "attachment_missing"
+    missing = reader.list_attachments(USER, "message/message_0.db:3")["items"]
+    assert [item["id"] for item in missing] == [item["id"] for item in items]
+    for item in missing:
+        result = reader.read_attachment(USER, "message/message_0.db:3", item["id"])
+        assert result.data is None and result.text is None
+        for metadata in (item, result.metadata):
+            assert metadata["state"] == "attachment_missing"
+            assert metadata["missing_reason"] == "image_resource_index_no_match"
+            assert metadata["recovery_hint"] == RECOVERY_HINT
+    create_database(
+        root / relative,
+        "UPDATE MessageResourceInfo SET message_svr_id=103; INSERT INTO MessageResourceInfo SELECT * FROM MessageResourceInfo;",
+        None,
+    )
+    ambiguous = reader.list_attachments(USER, "message/message_0.db:3")["items"][-1]
+    result = reader.read_attachment(USER, "message/message_0.db:3", ambiguous["id"])
+    for metadata in (ambiguous, result.metadata):
+        assert metadata["state"] == "attachment_ambiguous"
+        assert "missing_reason" not in metadata and "recovery_hint" not in metadata
 
 
 def test_xlsx_workbook_order_and_names():

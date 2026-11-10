@@ -13,7 +13,7 @@ import posixpath
 import re
 import subprocess
 import sys
-from typing import Any, TYPE_CHECKING
+from typing import Any, Literal, TYPE_CHECKING
 import warnings
 import xml.etree.ElementTree as ET
 import zipfile
@@ -38,6 +38,25 @@ MAX_PDF_PAGES = 100
 MAX_IMAGE_PIXELS = 25_000_000
 EXTRACT_TIMEOUT = 20
 HASH = re.compile(r"[0-9a-fA-F]{32}\Z")
+
+
+MissingReason = Literal["file_index_no_match", "image_resource_index_no_match", "cache_file_unavailable"]
+
+
+class AttachmentMissing(SourceError):
+    def __init__(self, reason: MissingReason, message: str):
+        super().__init__("attachment_missing", message)
+        self.reason = reason
+
+    def metadata(self) -> dict[str, str]:
+        return {
+            "missing_reason": self.reason,
+            "recovery_hint": (
+                "Open this attachment in the same WeChat account and download it if offered. "
+                "Then retry list_attachments for this message and read the selected attachment. "
+                "Recovery is not guaranteed."
+            ),
+        }
 
 
 @dataclass(frozen=True)
@@ -216,9 +235,13 @@ class Attachments:
             + f" AND i.message_local_id={int(self.row['local_id'])} AND i.message_svr_id={int(self.row['server_id'])} LIMIT 3",
             self.keys,
         )
+        if not rows:
+            raise AttachmentMissing(
+                "image_resource_index_no_match", "No unique image resource matches this message."
+            )
         if len(rows) != 1:
             raise SourceError(
-                "attachment_ambiguous" if rows else "attachment_missing",
+                "attachment_ambiguous",
                 "No unique image resource matches this message.",
             )
         hashes = set()
@@ -272,9 +295,13 @@ class Attachments:
                 if any(part and (Path(part).name != part or part in (".", "..")) for part in components):
                     raise SourceError("attachment_path_invalid", "Attachment index path is outside the selected cache.")
                 candidates.add(account / "msg/file" / Path(*[part for part in components if part]))
+            if not candidates:
+                raise AttachmentMissing(
+                    "file_index_no_match", "No unique file index matches the message name, digest, and size."
+                )
             if len(candidates) != 1:
                 raise SourceError(
-                    "attachment_ambiguous" if candidates else "attachment_missing",
+                    "attachment_ambiguous",
                     "No unique file index matches the message name, digest, and size.",
                 )
             candidate = next(iter(candidates))
@@ -284,8 +311,8 @@ class Attachments:
         if not resolved.is_relative_to(account / "msg"):
             raise SourceError("attachment_path_invalid", "Attachment path is outside the selected account cache.")
         if not resolved.is_file():
-            raise SourceError(
-                "attachment_missing", "This attachment variant is not cached locally. Open or download it in WeChat."
+            raise AttachmentMissing(
+                "cache_file_unavailable", "This attachment variant is not cached locally. Open or download it in WeChat."
             )
         return resolved
 
@@ -298,6 +325,8 @@ class Attachments:
                 item.update(state="available", cached_size=path.stat().st_size, content_verified=False)
             except (SourceError, OSError, ValueError) as error:
                 item["state"] = error.code if isinstance(error, SourceError) else "attachment_read_failed"
+                if isinstance(error, AttachmentMissing):
+                    item.update(error.metadata())
             items.append(item)
         return {
             "conversation_id": self.conversation_id,
@@ -373,6 +402,8 @@ class Attachments:
             Image.DecompressionBombWarning,
         ) as error:
             metadata["state"] = error.code if isinstance(error, SourceError) else "attachment_decode_failed"
+            if isinstance(error, AttachmentMissing):
+                metadata.update(error.metadata())
             return AttachmentRead(metadata)
 
 

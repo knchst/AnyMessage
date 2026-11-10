@@ -15,7 +15,7 @@ Direct file app messages and image messages are supported. Nested forwarded atta
 `list_attachments(conversation_id, message_id)` re-reads the exact message under that conversation.
 It returns `items` and `metadata_state`.
 Each item contains an opaque `id`, message and server identity, `kind`, `display_name`, declared `size` and `md5` for files, image `cache_basename` when present in the row, and `variant`.
-Availability is `available` only when the resolved cache file exists.
+Availability is `available` only when the resolved cache path is a regular file.
 `cached_size` is the local file size. `content_verified=false` means the bytes have not yet been checked.
 A listed attachment can still fail during reading or extraction.
 
@@ -108,10 +108,10 @@ Common states are:
 | --- | --- |
 | `ready` | Content is available in this response. |
 | `no_extractable_text` | The bounded text view is empty. No OCR was attempted. |
-| `attachment_missing` | No matching index entry or requested cached variant exists. |
+| `attachment_missing` | No matching index entry or the requested cache path is not a regular file. |
 | `attachment_ambiguous` | More than one cache identity or path matches. |
 | `attachment_integrity_failed` | Actual file size or MD5 differs from the message. |
-| `attachment_path_invalid` | An index path or resolved symlink leaves the selected account cache. |
+| `attachment_path_invalid` | An index path or resolved file path leaves the selected account cache, or an image cache locator redirects through a symlink. |
 | `attachment_too_large`, `image_too_large` | A source, response, or pixel limit was exceeded. |
 | `image_key_required` | No unique supported configuration matches this account. |
 | `image_format_unsupported`, `image_decode_failed` | Unsupported cache format, invalid bounds, padding, or image data. |
@@ -119,6 +119,25 @@ Common states are:
 | `format_unsupported` | No supported text decoder matches the bytes and container declarations. |
 | `document_invalid`, `extraction_limit`, `extraction_timeout`, `extraction_failed` | The document could not be parsed within the supported constraints. |
 | `database_missing`, `key_missing`, `key_invalid`, `schema_unsupported`, `database_read_failed` | A required attachment index cannot be read. |
+
+When an attachment lookup observes one of the following conditions, its list item and read metadata include `missing_reason` and `recovery_hint`.
+The state remains `attachment_missing`, and attachment ids remain unchanged.
+
+| `missing_reason` | Observation |
+| --- | --- |
+| `file_index_no_match` | The file hardlink index query returned no matching candidate for the message name, MD5, and size. |
+| `image_resource_index_no_match` | The image resource index query returned no matching row for the exact message and conversation. |
+| `cache_file_unavailable` | The validated path for the selected attachment variant is not a regular file. |
+
+The fixed `recovery_hint` is:
+
+> Open this attachment in the same WeChat account and download it if offered. Then retry list_attachments for this message and read the selected attachment. Recovery is not guaranteed.
+
+These observations cannot distinguish content that was never downloaded from content that was deleted or expired.
+They do not establish whether remote content is available or whether the manual action can restore the local cache.
+Each retry checks the current index and cache. Image variants remain explicit, with no automatic substitution.
+Both fields are omitted for all other results, including available content, ambiguous matches, unreadable index databases, invalid paths, and decoding failures.
+The fields contain only the listed reasons and fixed hint, never raw exception text, paths, SQL, or keys.
 
 A ready source status checks core conversation and message databases.
 Attachment indexes, caches, and image configuration are checked only when an attachment tool needs them.

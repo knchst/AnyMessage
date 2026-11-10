@@ -7,14 +7,33 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from conftest import USER, TABLE, create_database
-from test_attachments import add_file, image_bytes
+from test_attachments import RECOVERY_HINT, add_file, image_bytes
 import base64
 import hashlib
 import json
 from datetime import datetime
 
 
-async def check_attachment_roundtrips(client, message_id):
+async def check_missing_attachment(client, message_id, reason):
+    listing = await client.call_tool("list_attachments", {"conversation_id": USER, "message_id": message_id})
+    assert not listing.isError
+    assert json.loads(listing.content[-1].text) == listing.structuredContent
+    item = listing.structuredContent["items"][0]
+    result = await client.call_tool(
+        "read_attachment",
+        {"conversation_id": USER, "message_id": message_id, "attachment_id": item["id"]},
+    )
+    assert result.isError
+    assert len(result.content) == 1 and result.content[0].type == "text"
+    assert json.loads(result.content[0].text) == result.structuredContent
+    for metadata in (item, result.structuredContent):
+        assert metadata["state"] == "attachment_missing"
+        assert metadata["missing_reason"] == reason
+        assert metadata["recovery_hint"] == RECOVERY_HINT
+    return item["id"]
+
+
+async def check_attachment_roundtrips(client, message_id, source):
     listing = await client.call_tool("list_attachments", {"conversation_id": USER, "message_id": message_id})
     assert not listing.isError
     attachment_id = listing.structuredContent["items"][0]["id"]
@@ -39,6 +58,28 @@ async def check_attachment_roundtrips(client, message_id):
     assert image.structuredContent["variant"] == "thumbnail"
     for result in (text, binary, image):
         assert json.loads(result.content[-1].text) == result.structuredContent
+        assert "missing_reason" not in result.structuredContent
+        assert "recovery_hint" not in result.structuredContent
+    image_message_id = "message/message_0.db:3"
+    assert (
+        await check_missing_attachment(client, image_message_id, "cache_file_unavailable")
+        == listing.structuredContent["items"][0]["id"]
+    )
+    _, root, _, keys = source
+    create_database(root / "hardlink/hardlink.db", "DELETE FROM file_hardlink_info_v4;", None)
+    assert await check_missing_attachment(client, message_id, "file_index_no_match") == attachment_id
+    key = keys.get("message/message_0.db", {}).get("enc_key")
+    create_database(
+        root / "message/message_0.db",
+        f'UPDATE "{TABLE}" SET packed_info_data=NULL WHERE local_id=3;',
+        key,
+    )
+    create_database(
+        root / "message/message_resource.db",
+        "CREATE TABLE ChatName2Id(user_name TEXT); CREATE TABLE MessageResourceInfo(chat_id INTEGER,message_local_id INTEGER,message_svr_id INTEGER,packed_info BLOB);",
+        None,
+    )
+    await check_missing_attachment(client, image_message_id, "image_resource_index_no_match")
 
 
 def prepare_attachments(source):
@@ -91,7 +132,7 @@ async def test_stdio_protocol(source):
                 result = await client.call_tool(name, args)
                 assert not result.isError, result.content
                 assert result.structuredContent
-            await check_attachment_roundtrips(client, message_id)
+            await check_attachment_roundtrips(client, message_id, source)
             invalid = await client.call_tool("get_messages", {"conversation_id": USER, "limit": -1})
             assert invalid.isError
 
@@ -163,7 +204,7 @@ async def test_loopback_http_protocol(source):
                 result = await client.call_tool("status", {})
                 assert not result.isError
                 assert result.structuredContent["sources"][0]["state"] == "ready"
-                await check_attachment_roundtrips(client, message_id)
+                await check_attachment_roundtrips(client, message_id, source)
     finally:
         process.terminate()
         await asyncio.wait_for(process.wait(), timeout=10)
