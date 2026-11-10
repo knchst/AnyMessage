@@ -1,6 +1,6 @@
 # Read a Telegram Desktop JSON export
 
-AnyMessage 0.8.0 reads messages and classic local attachments from one explicitly selected Telegram Desktop JSON export.
+AnyMessage 0.9.0 reads messages and classic local attachments from one explicitly selected Telegram Desktop JSON export and generates client entries for it.
 It supports conversation listing, dated history, selected-chat search, and exact-message context through the existing seven MCP tools.
 It does not need WeChat, SQLCipher, account keys, or saved WeChat configuration.
 This workflow has been verified on macOS through the MCP SDK. Other platforms and desktop-host export configuration have not been verified.
@@ -25,8 +25,8 @@ The final command starts a stdio MCP server, which waits for a client rather tha
 One process serves one selected file. Restart it to load a changed file or choose another export.
 An invalid explicit export fails startup with exit code 2 and a structural error on stderr.
 It never falls back to WeChat.
-`setup`, `doctor`, legacy `--status`, and `mcp add/config` remain WeChat commands.
-Combining `--telegram-export` with `mcp add/config` is rejected so registration cannot silently lose the selected file.
+`setup`, `doctor`, legacy `--status`, and `mcp add` remain WeChat commands.
+`mcp add` rejects an export selection. Use `mcp config --telegram-export FILE` and merge its output manually instead.
 
 The file must be a regular UTF-8 JSON file, optionally with a BOM, no larger than 16 MiB.
 The selected JSON filename must not be a symlink; pass the target's real filename. Parent directory aliases are resolved once.
@@ -38,8 +38,28 @@ Only normalized chat records remain, with no retained file handle or plaintext d
 
 ## Connect your AI
 
-Find your executable with `command -v anymessage` and replace both absolute paths below.
-Add a separate entry to a client that accepts JSON MCP configuration:
+With AnyMessage 0.9.0 or later, generate a separate entry for the selected export:
+
+```sh
+anymessage mcp config --telegram-export '東京 chat/result.json' --client cursor --format json
+anymessage mcp --telegram-export '東京 chat/result.json' config --client codex --format toml
+```
+
+Both flag positions select the same export. Specify the format explicitly; the client selection does not infer JSON or TOML.
+Copy the generated entry into the existing client configuration without replacing unrelated settings.
+The entry is named `telegram-export` so it can coexist with `AnyMessage` for WeChat. For several exports, choose a distinct entry name for each.
+`--server-only` omits the JSON `mcpServers` or TOML `mcp_servers` wrapper.
+`--command 'relative or absolute/anymessage'` selects another executable; otherwise generation retains the invoked installation.
+Cursor adds its required `type: "stdio"`; generic entries and the other local clients retain their existing shape.
+Local Grok CLI is supported. `--client grokbot` retains its remote-host guidance and prints no local entry.
+
+Generation makes the selected filename absolute from the current directory and expands `~`, without resolving aliases or `..`.
+It does not read or validate the export, read WeChat settings, or change client files.
+Missing, malformed, or symlink exports can produce entries; the launched server applies the validation above and fails without a WeChat fallback.
+Select the export only once. Telegram configuration rejects HTTP transport or an explicitly supplied port; use the separate HTTP launch below.
+`mcp add` does not register exports. Configuration without an export keeps the existing WeChat entry.
+
+For example, a generic JSON entry looks like this:
 
 ```json
 {

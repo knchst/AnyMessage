@@ -10,6 +10,8 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import shutil
+import subprocess
 import tempfile
 import tomllib
 import zipfile
@@ -49,6 +51,14 @@ async def main() -> None:
         supports_context = tuple(int(part) for part in version.split(".")) >= (0, 6, 0)
         supports_export = tuple(int(part) for part in version.split(".")) >= (0, 7, 0)
         supports_export_media = tuple(int(part) for part in version.split(".")) >= (0, 8, 0)
+        supports_export_config = tuple(int(part) for part in version.split(".")) >= (0, 9, 0)
+        if supports_export_config:
+            description = manifest.get("description", "")
+            long_description = manifest.get("long_description", "")
+            if len(description) > 100 or record.get("description") != description or not all(text in description for text in ("Telegram JSON", "WeChat", "WeChat requires SQLCipher and account setup")):
+                raise ValueError("The manifest and Registry must describe both sources and qualify WeChat requirements.")
+            if not all(text in long_description for text in ("Apple Silicon macOS 14", "MCPB 0.4 UV host", "default entry reads WeChat", "SQLCipher, account keys and explicit account setup", "separate stdio entry", "explicit export path", "no WeChat setup, keys or SQLCipher")):
+                raise ValueError("The manifest must explain the default WeChat entry and independent Telegram setup.")
         expected_tools = {"status", "list_conversations", "get_messages", "search_messages", "list_attachments", "read_attachment"}
         if supports_context:
             expected_tools.add("get_message_context")
@@ -66,16 +76,19 @@ async def main() -> None:
         from mcp.client.stdio import stdio_client
 
         with tempfile.TemporaryDirectory(prefix="anymessage-mcpb-") as temporary:
+            temporary = str(Path(temporary).resolve())
             root = Path(temporary) / "bundle with spaces"
             archive.extractall(root)
             environment = {key: value for key, value in os.environ.items() if not key.startswith("ANYMESSAGE_") and key not in {"PYTHONPATH", "PYTHONHOME"}}
             environment.update(ANYMESSAGE_CONFIG_FILE=str(root / "absent-config.json"), ANYMESSAGE_DATA_DIR=str(root / "absent-data"), ANYMESSAGE_KEYS_FILE=str(root / "absent-manifest.json"), ANYMESSAGE_ACCOUNT="fixture")
+            environment["UV_PROJECT_ENVIRONMENT"] = str(root / ".venv")
             arguments = [item.replace("${__dirname}", str(root)) for item in launch["args"]]
             async with stdio_client(StdioServerParameters(command=args.uv, args=arguments, env=environment, cwd=temporary)) as (read, write):
                 async with ClientSession(read, write) as client:
                     await client.initialize()
                     tools = await client.list_tools()
                     assert {tool.name for tool in tools.tools} == expected_tools
+                    expected_schemas = {tool.name: tool.inputSchema for tool in tools.tools}
                     observed_count = len(tools.tools)
                     assert all(tool.annotations and tool.annotations.readOnlyHint and tool.annotations.openWorldHint is False for tool in tools.tools)
                     status = await client.call_tool("status", {})
@@ -107,12 +120,29 @@ async def main() -> None:
                 print("Search-hit context returned the adjacent approval and verified specification attachment.")
             if supports_export:
                 (root / "absent-config.json").write_text("unrelated broken WeChat configuration")
-                export_arguments = [*arguments, "--telegram-export", str(root / "examples/telegram-fictional.json")]
-                async with stdio_client(StdioServerParameters(command=args.uv, args=export_arguments, env=environment, cwd=temporary)) as (read, write):
+                if supports_export_config:
+                    selected = Path(temporary) / "東京 export with spaces"
+                    selected.mkdir()
+                    export = selected / "fictional export.json"
+                    shutil.copyfile(root / "examples/telegram-fictional.json", export)
+                    shutil.copyfile(root / "examples/river-spec-v2.txt", selected / "river-spec-v2.txt")
+                    executable = root / ".venv/bin/anymessage"
+                    generated = subprocess.run([str(executable), "mcp", "config", "--telegram-export", str(export.relative_to(temporary)), "--client", "codex", "--format", "toml"], check=True, capture_output=True, text=True, cwd=temporary, env=environment)
+                    assert not generated.stderr
+                    entry = tomllib.loads(generated.stdout)["mcp_servers"]["telegram-export"]
+                    assert entry == {"command": str(executable), "args": ["mcp", "--telegram-export", str(export)]}
+                    parameters = StdioServerParameters(command=entry["command"], args=entry["args"], env={**environment, **entry.get("env", {})}, cwd=str(root))
+                else:
+                    export_arguments = [*arguments, "--telegram-export", str(root / "examples/telegram-fictional.json")]
+                    parameters = StdioServerParameters(command=args.uv, args=export_arguments, env=environment, cwd=temporary)
+                async with stdio_client(parameters) as (read, write):
                     async with ClientSession(read, write) as client:
                         await client.initialize()
+                        tools = (await client.list_tools()).tools
+                        assert {tool.name: tool.inputSchema for tool in tools} == expected_schemas
                         status = await client.call_tool("status", {})
-                        assert status.structuredContent["sources"][0]["source"] == "telegram_export"
+                        assert len(status.structuredContent["sources"]) == 1
+                        assert status.structuredContent["sources"][0]["source"] == "telegram_export" and status.structuredContent["sources"][0]["state"] == "ready"
                         search = await client.call_tool("search_messages", {"query": "proposal", "conversation_id": "telegram:private_group:42"})
                         hit = search.structuredContent["items"][0]
                         context = await client.call_tool("get_message_context", {"conversation_id": hit["conversation_id"], "message_id": hit["id"], "before": 1, "after": 2})
@@ -129,11 +159,16 @@ async def main() -> None:
                             attachment = await client.call_tool("read_attachment", {"conversation_id": specification["conversation_id"], "message_id": specification["id"], "attachment_id": listing.structuredContent["items"][0]["id"]})
                             assert not attachment.isError and attachment.content[0].type == "text"
                             assert "Battery: 500 mAh" in attachment.content[0].text
+                            if supports_export_config:
+                                assert attachment.content[0].text == (selected / "river-spec-v2.txt").read_text()
                             assert not attachment.structuredContent["content_verified"]
                             assert attachment.structuredContent["media_consistency"] == "current_local_files"
                         else:
                             assert media.structuredContent["items"] == [] and media.structuredContent["metadata_state"] == "unsupported"
                 print("Explicit Telegram export passed actual search-hit context with broken unrelated WeChat configuration.")
+                assert (root / "absent-config.json").read_text() == "unrelated broken WeChat configuration"
+                if supports_export_config:
+                    print("The extracted environment generated TOML and its parsed command launched unchanged from another directory.")
                 print("Telegram specification bytes were read." if supports_export_media else "This older release reports unsupported Telegram media.")
 
 

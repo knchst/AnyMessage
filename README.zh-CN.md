@@ -15,7 +15,7 @@ AI 负责分析，AnyMessage 返回消息、来源 ID、查询范围和支持的
 
 ## 先试一个虚构项目
 
-AnyMessage 0.8.0 支持无需账号密钥的 Telegram 文本、上下文和本地附件读取。安装 [uv](https://docs.astral.sh/uv/getting-started/installation/) 后，可以把[虚构 River 聊天](examples/telegram-fictional.json)和[规格文件](examples/river-spec-v2.txt)下载到同一文件夹，再启动 MCP：
+AnyMessage 0.9.0 支持无需账号密钥的 Telegram 文本、上下文、本地附件读取和客户端配置生成。安装 [uv](https://docs.astral.sh/uv/getting-started/installation/) 后，可以把[虚构 River 聊天](examples/telegram-fictional.json)和[规格文件](examples/river-spec-v2.txt)下载到同一文件夹，再启动 MCP：
 
 ```sh
 curl --fail --location https://raw.githubusercontent.com/knchst/AnyMessage/main/examples/telegram-fictional.json --output telegram-fictional.json
@@ -23,7 +23,19 @@ curl --fail --location https://raw.githubusercontent.com/knchst/AnyMessage/main/
 uvx --from git+https://github.com/knchst/AnyMessage anymessage mcp --telegram-export "$PWD/telegram-fictional.json"
 ```
 
-这会启动 stdio MCP 服务器，需要在 AI 客户端中使用[完整手动配置](docs/telegram-export.md#connect-your-ai)。
+这会启动 stdio MCP 服务器。安装 AnyMessage 0.9.0 或更新版本后，也可以生成客户端配置：
+
+```sh
+anymessage mcp config --telegram-export telegram-fictional.json --client cursor --format json
+anymessage mcp --telegram-export telegram-fictional.json config --client codex --format toml
+```
+
+把输出合并到客户端现有配置，再重新连接 MCP。客户端选项不会自动选择 JSON 或 TOML 格式。
+生成器不读取导出内容或微信配置，也不修改客户端文件；服务器启动时验证导出，失败后不会回退到微信。
+所选文件名会转为绝对路径，同时保留目录别名和 `..`。导出路径只能指定一次，生成 Telegram 配置时不能指定 HTTP 传输或端口。
+`--server-only` 省略 JSON 的 `mcpServers` 或 TOML 的 `mcp_servers` 外层。`--command` 支持相对或绝对可执行文件路径。
+`telegram-export` 可与微信的 `AnyMessage` 条目并存；多个导出需手动使用不同名称。`mcp add` 仍仅注册微信。
+完整选项和手动示例见[连接说明](docs/telegram-export.md#connect-your-ai)。
 不需要安装微信或 SQLCipher，也不读取已保存的微信配置。
 先列出会话，在 River 项目中搜索 `proposal`，再读取命中的上下文，就能看到相邻的批准消息。继续查看消息 `6` 的附件列表，用返回的 ID 读取实际规格文本。
 自己的数据可在 Telegram Desktop 中选择导出聊天记录，格式选 JSON。
@@ -80,7 +92,7 @@ anymessage setup
 ```
 
 安装会包含 Python 和 SQLCipher。
-支持 MCPB 0.4 和 UV 的宿主可参考[分发说明](docs/distribution.md)。仍需 SQLCipher 和明确的账号设置；格式验证不代表已在某个桌面宿主完成安装验证。
+支持 MCPB 0.4 和 UV 的宿主可参考[分发说明](docs/distribution.md)。默认微信入口读取个人聊天时仍需 SQLCipher、账号密钥和明确的账号设置；独立 Telegram 导出入口不需要这些微信条件。格式验证不代表已在某个桌面宿主完成安装验证。
 设置会优先复用已有的有效密钥，默认注册 Codex；完成后需要重启或重新加载 MCP 连接。
 没有密钥时，需要阅读[首次设置说明](docs/wechat-setup.md)，通过明确授权的临时微信副本获取。
 该步骤可能需要手机确认或登录。
@@ -97,7 +109,7 @@ anymessage doctor
 
 ## 当前支持范围
 
-- 默认数据源为微信 4.x；已验证的环境是 Apple Silicon 和微信 4.1.15，其他版本需要验证。0.8.0 也支持明确选择的 Telegram Desktop JSON 导出及本地附件。
+- 默认数据源为微信 4.x；已验证的环境是 Apple Silicon 和微信 4.1.15，其他版本需要验证。也支持明确选择的 Telegram Desktop JSON 导出、本地附件和 0.9.0 的手动配置生成。
 - 七个工具均为只读，支持会话列表、按时间范围分页读取消息、指定消息的上下文、在明确选择的 1–8 个会话内共享扫描额度的文本搜索，以及支持格式的本地附件读取。
 - 微信附件包括 PDF、DOCX、XLSX、PPTX 和 Unicode 文本；支持部分原始图片及 V2 图片缓存。Telegram 经典导出支持同类文档文本、图片和明确请求的受限原始字节；不会自动下载文件，也不会认证媒体来源。
 - 未实现发送、删除、云端聊天同步、全会话搜索、语义搜索、OCR、语音和视频解码。

@@ -191,15 +191,15 @@ def main(argv: list[str] | None = None) -> int:
     onboarding.add_argument("--acknowledge-debug-copy", action="store_true", help="Explicit consent to first-time temporary-copy capture")
     onboarding.add_argument("--state-dir", type=Path, help="New private directory for capture; must not exist")
     onboarding.add_argument("--replace", action="store_true", help="Replace conflicting saved references or AnyMessage client entries")
-    onboarding.add_argument("--command", help="Absolute AnyMessage executable path for client registration")
+    onboarding.add_argument("--command", help="AnyMessage executable path for client registration; relative paths are made absolute")
     diagnostic = commands.add_parser("doctor", help="Inspect readiness and prerequisites without reading messages")
     diagnostic.add_argument("--json", action="store_true")
     demo = commands.add_parser("demo", help="Try fictional project messages and attachments without WeChat or account keys")
     demo.add_argument("--mcp", action="store_true", help="Serve the fictional dataset over stdio MCP for your AI client")
     mcp = commands.add_parser("mcp", help="Run the MCP server or manage local clients")
     mcp.add_argument("--transport", choices=("stdio", "streamable-http"), default="stdio")
-    mcp.add_argument("--port", type=int, default=8765, help="Loopback HTTP port; default 8765")
-    mcp.add_argument("--telegram-export", type=Path, help="Read one Telegram Desktop JSON export and local attachments instead of WeChat; no keys")
+    mcp.add_argument("--port", type=int, help="Loopback HTTP port; default 8765")
+    mcp.add_argument("--telegram-export", type=Path, action="append", dest="server_exports", metavar="FILE", help="Read one Telegram Desktop JSON export and local attachments instead of WeChat; also accepted by config")
     actions = mcp.add_subparsers(dest="mcp_action")
     add = actions.add_parser("add", help="Register a local client")
     add.add_argument("client", choices=[*CLIENTS, "grokbot"])
@@ -208,13 +208,24 @@ def main(argv: list[str] | None = None) -> int:
     config = actions.add_parser("config", help="Print a manual stdio MCP configuration")
     config.add_argument("--format", choices=("json", "toml"), default="json")
     config.add_argument("--client", choices=[*CLIENTS, "grokbot"])
-    config.add_argument("--server-only", action="store_true", help="Print the server object without an mcpServers wrapper")
-    config.add_argument("--command")
+    config.add_argument("--server-only", action="store_true", help="Print the server object without the JSON mcpServers or TOML mcp_servers wrapper")
+    config.add_argument("--command", help="AnyMessage executable path; relative paths are made absolute")
+    config.add_argument("--telegram-export", type=Path, action="append", dest="config_exports", metavar="FILE", help="Print a stdio entry for this Telegram Desktop JSON export without reading or validating it")
     args = parser.parse_args(argv)
     if args.status and args.command_name:
         parser.error("--status cannot be combined with a subcommand")
-    if args.command_name == "mcp" and args.telegram_export is not None and args.mcp_action is not None:
-        parser.error("--telegram-export selects a running server, not mcp add/config. Use the manual Telegram MCP configuration in docs/telegram-export.md.")
+    export = None
+    if args.command_name == "mcp":
+        exports = args.server_exports or []
+        if args.mcp_action == "config":
+            exports = exports + (args.config_exports or [])
+            if len(exports) > 1:
+                parser.error("mcp config accepts --telegram-export exactly once")
+            if exports and (args.transport != "stdio" or args.port is not None):
+                parser.error("Telegram configuration supports stdio only; omit --transport streamable-http and --port")
+        elif args.mcp_action == "add" and exports:
+            parser.error("mcp add does not register Telegram exports. Use mcp config --telegram-export FILE and merge the entry manually.")
+        export = exports[-1] if exports else None
     try:
         if args.status:
             status = WeChat().status()
@@ -247,7 +258,7 @@ def main(argv: list[str] | None = None) -> int:
                 asyncio.run(print_demo_evidence())
             return 0
         if args.command_name == "mcp" and args.mcp_action == "config":
-            print(configuration(args.format, client=args.client, command=args.command, server_only=args.server_only), end="")
+            print(configuration(args.format, client=args.client, command=args.command, server_only=args.server_only, telegram_export=export), end="")
             return 0
         if args.command_name == "mcp" and args.mcp_action == "add":
             if args.client == "grokbot":
@@ -260,10 +271,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         from anymessage.server import create_server
         transport = args.transport if args.command_name == "mcp" else "stdio"
-        port = args.port if args.command_name == "mcp" else 8765
+        port = args.port if args.command_name == "mcp" and args.port is not None else 8765
         if not 1 <= port <= 65535:
             parser.error("--port must be between 1 and 65535")
-        export = args.telegram_export if args.command_name == "mcp" else None
         create_server(port=port, telegram_export=export).run(transport=transport)
         return 0
     except (OSError, ValueError, SourceError, subprocess.SubprocessError) as error:

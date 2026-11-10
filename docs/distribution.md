@@ -2,14 +2,18 @@
 
 The Homebrew installation remains the tested user setup path.
 An MCPB package provides the same released source for hosts supporting MCPB manifest 0.4 and its UV runtime.
-It requires Apple Silicon macOS 14 or later, SQLCipher, and explicit account setup before reading personal history.
+It requires Apple Silicon macOS 14 or later.
+Reading personal history through the default WeChat entry requires SQLCipher, account keys, and explicit account setup.
+An explicitly selected local Telegram Desktop JSON export needs no WeChat installation, settings, keys, or SQLCipher.
 The host must provide a working UV launcher and Python 3.11 or later, or manage those runtimes itself.
 The first launch can download Python dependencies and build the local project.
 It does not fetch the unrelated `anymessage` package from PyPI, capture keys, or register an account.
 
 The package's default installed entry launches normal WeChat `mcp` mode using saved configuration references.
-Telegram export mode requires a separate [manual client entry](telegram-export.md#connect-your-ai) with `--telegram-export` and an explicit JSON path.
-Neither bundle installation nor `mcp add/config` selects an export; combining those registration commands with the flag is rejected.
+Telegram export mode requires a separate [client entry](telegram-export.md#connect-your-ai) with `--telegram-export` and an explicit JSON path.
+From 0.9.0 onward, print that entry with `anymessage mcp config --telegram-export result.json --format json` or `--format toml`, then merge it into the existing configuration.
+Generation does not validate the export or write client settings. The launched server validates the selected file.
+Neither bundle installation nor `mcp add` selects an export; registration with the flag is rejected.
 The export workflow is verified through the MCP SDK on macOS. Export configuration in a desktop host has not been tested.
 Use the [fictional demo](demo.md) separately before connecting an account.
 Manifest validation and an MCP SDK check establish artifact behavior; they do not establish installation support in a particular desktop host.
@@ -17,7 +21,8 @@ Keep each host's actual installation results separate from these checks.
 
 ## Use the published bundle
 
-Download [AnyMessage 0.8.0 MCPB](https://github.com/knchst/AnyMessage/releases/download/v0.8.0/anymessage-0.8.0.mcpb) from the [release page](https://github.com/knchst/AnyMessage/releases/tag/v0.8.0).
+Download [AnyMessage 0.9.0 MCPB](https://github.com/knchst/AnyMessage/releases/download/v0.9.0/anymessage-0.9.0.mcpb) from the [release page](https://github.com/knchst/AnyMessage/releases/tag/v0.9.0).
+The [historical 0.8.0 bundle](https://github.com/knchst/AnyMessage/releases/tag/v0.8.0) retains its manual Telegram entries and original metadata. Configuration generation and qualified source requirements apply to 0.9.0 and later.
 If you already configured AnyMessage, the bundle uses those saved account references.
 For a new account setup, read the [first-time setup guide](wechat-setup.md), then run:
 
@@ -47,6 +52,7 @@ python3 scripts/build_mcpb.py downloads/anymessage-0.4.0.tar.gz \
 ```
 
 The builder derives the version from the verified archive and retains its project, local lock, bootstrap resources, licenses, documentation, and linked assets.
+Archives before 0.9.0 retain the original WeChat metadata; 0.9.0 and later describe both sources and qualify the default WeChat requirements.
 It emits `anymessage-0.4.0.mcpb` and `server.json` referring to that artifact's SHA-256 and exact GitHub Release URL.
 It copies no working checkout or virtual environment.
 If any command fails, do not upload its output.
@@ -67,6 +73,8 @@ The verified numeric release version selects the original six tools for releases
 For those newer releases, it also follows an actual search hit to the adjacent approval and verified specification attachment.
 From 0.7.0 onward, it separately launches the packaged fictional Telegram export with broken unrelated WeChat configuration and follows its proposal to the approval.
 For 0.7 releases it checks unsupported media. From 0.8.0 onward it requires the packaged specification TXT and reads its actual text through context, attachment listing, and the returned ID, while keeping Telegram verification false.
+From 0.9.0 onward, the extracted bundle's own environment generates a TOML entry for a relative export path containing spaces and non-ASCII characters.
+The check parses that entry and starts its actual command, arguments, and environment from a different directory, then follows the same proposal, approval, and specification chain.
 This explicit SDK launch does not change the bundle's default installed WeChat entry.
 The check prints the observed tool count; the immutable 0.4.0 example above still expects six.
 It does not read an actual account.

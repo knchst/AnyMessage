@@ -308,7 +308,7 @@ def test_all_selected_chats_resolve_and_no_unselected_scan(export):
 
 
 def test_cli_rejects_registration_and_safe_errors(tmp_path):
-    for args in (["mcp", "--telegram-export", str(FIXTURE), "config"], ["mcp", "--telegram-export", str(FIXTURE), "add", "codex"], ["mcp", "--telegram-export", str(tmp_path / "missing")]):
+    for args in (["mcp", "--telegram-export", str(FIXTURE), "add", "codex"], ["mcp", "--telegram-export", str(tmp_path / "missing")]):
         result = subprocess.run([sys.executable, "-m", "anymessage.server", *args], capture_output=True, text=True)
         assert result.returncode == 2 and result.stdout == ""
         assert "telegram" in result.stderr.lower()
