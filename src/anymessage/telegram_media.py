@@ -1,5 +1,3 @@
-"""Message-bound classic Telegram export media and bounded local reads."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
