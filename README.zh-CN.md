@@ -2,7 +2,7 @@
 
 用你熟悉的 AI，查清聊天里的决定。
 
-通过 MCP，让 Codex、Claude 或 Cursor 只读访问 Mac 本地的微信聊天记录和已缓存的附件。
+通过 MCP，让 Codex、Claude 或 Cursor 只读访问 Mac 本地的微信聊天记录，或明确选择的 Telegram Desktop JSON 导出文件。
 你可以问项目的规格改了什么、哪些方案已经确认、还有什么需要跟进。
 AI 负责分析，AnyMessage 返回消息、来源 ID、查询范围和支持的附件内容。
 
@@ -15,9 +15,26 @@ AI 负责分析，AnyMessage 返回消息、来源 ID、查询范围和支持的
 
 ## 先试一个虚构项目
 
+AnyMessage 0.7.0 新增无需账号密钥的 Telegram 文本读取。安装 [uv](https://docs.astral.sh/uv/getting-started/installation/) 后，可以下载[虚构 River 聊天](examples/telegram-fictional.json)并启动 MCP：
+
+```sh
+curl --fail --location https://raw.githubusercontent.com/knchst/AnyMessage/main/examples/telegram-fictional.json --output telegram-fictional.json
+uvx --from git+https://github.com/knchst/AnyMessage anymessage mcp --telegram-export "$PWD/telegram-fictional.json"
+```
+
+这会启动 stdio MCP 服务器，需要在 AI 客户端中使用[完整手动配置](docs/telegram-export.md#connect-your-ai)。
+不需要安装微信或 SQLCipher，也不读取已保存的微信配置。
+先列出会话，在 River 项目中搜索 `proposal`，再读取命中的上下文，就能看到相邻的批准消息。
+自己的数据可在 Telegram Desktop 中选择导出聊天记录，格式选 JSON。
+文件上限为 16 MiB，整个 JSON 在启动时载入内存，修改文件后需重启服务器。
+当前只读取文本，不支持 Telegram 附件或 `rich_message` 正文；导出也不保证完整云端历史。
+Telegram 的 ID、游标与覆盖范围说明见[导出文档](docs/telegram-export.md)。
+
+以下是原有的微信演示。
+
 演示使用临时生成的虚构聊天和附件，通过真实的 MCP 工具读取。
 需要 SQLCipher，不需要安装微信、获取账号密钥或订阅 AI 服务。
-演示需要 AnyMessage 0.4.0 或更新版本；Homebrew 0.3.1 尚未包含这些命令。
+微信演示需要 AnyMessage 0.4.0 或更新版本。
 
 安装 [uv](https://docs.astral.sh/uv/getting-started/installation/) 后运行：
 
@@ -78,13 +95,14 @@ anymessage doctor
 
 ## 当前支持范围
 
-- 当前数据源为微信 4.x；已验证的环境是 Apple Silicon 和微信 4.1.15，其他版本需要验证。
+- 默认数据源为微信 4.x；已验证的环境是 Apple Silicon 和微信 4.1.15，其他版本需要验证。0.7.0 也支持明确选择的 Telegram Desktop JSON 文本导出。
 - 七个工具均为只读，支持会话列表、按时间范围分页读取消息、指定消息的上下文、在明确选择的 1–8 个会话内共享扫描额度的文本搜索，以及支持格式的本地附件读取。
-- 文档包括 PDF、DOCX、XLSX、PPTX 和 Unicode 文本；支持部分原始图片及 V2 图片缓存。
+- 微信附件包括 PDF、DOCX、XLSX、PPTX 和 Unicode 文本；支持部分原始图片及 V2 图片缓存。Telegram 的附件工具返回明确的不支持状态，不打开媒体路径。
 - 未实现发送、删除、云端聊天同步、全会话搜索、语义搜索、OCR、语音和视频解码。
 - 本地不存在的附件不会自动下载；缩略图和原图分别标识。
 
 先调用 `status`，再用 `list_conversations` 获取会话 ID。
+以下数据库、游标及附件细节描述微信数据源。Telegram 使用相同的七个工具参数，但身份、快照和覆盖范围遵循[独立约定](docs/telegram-export.md#source-contract)。
 按时间范围读取与多会话搜索需要 AnyMessage 0.5.0 或更新版本。
 指定消息的上下文读取需要 AnyMessage 0.6.0 或更新版本。
 `get_messages` 接受一个 `conversation_id`。

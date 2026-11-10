@@ -7,14 +7,17 @@ The host must provide a working UV launcher and Python 3.11 or later, or manage 
 The first launch can download Python dependencies and build the local project.
 It does not fetch the unrelated `anymessage` package from PyPI, capture keys, or register an account.
 
-The package launches normal `mcp` mode using saved configuration references.
+The package's default installed entry launches normal WeChat `mcp` mode using saved configuration references.
+Telegram export mode requires a separate [manual client entry](telegram-export.md#connect-your-ai) with `--telegram-export` and an explicit JSON path.
+Neither bundle installation nor `mcp add/config` selects an export; combining those registration commands with the flag is rejected.
+The export workflow is verified through the MCP SDK on macOS. Export configuration in a desktop host has not been tested.
 Use the [fictional demo](demo.md) separately before connecting an account.
 Manifest validation and an MCP SDK check establish artifact behavior; they do not establish installation support in a particular desktop host.
 Keep each host's actual installation results separate from these checks.
 
 ## Use the published bundle
 
-Download [AnyMessage 0.6.0 MCPB](https://github.com/knchst/AnyMessage/releases/download/v0.6.0/anymessage-0.6.0.mcpb) from the [release page](https://github.com/knchst/AnyMessage/releases/tag/v0.6.0).
+Download [AnyMessage 0.7.0 MCPB](https://github.com/knchst/AnyMessage/releases/download/v0.7.0/anymessage-0.7.0.mcpb) from the [release page](https://github.com/knchst/AnyMessage/releases/tag/v0.7.0).
 If you already configured AnyMessage, the bundle uses those saved account references.
 For a new account setup, read the [first-time setup guide](wechat-setup.md), then run:
 
@@ -62,6 +65,8 @@ The runtime check needs SQLCipher and a working `uv` command; `--uv /absolute/pa
 It extracts into a temporary path containing spaces, sets explicit nonexistent account references, checks the version's read-only tool inventory and unconfigured status, and reads eight synthetic demo messages.
 The verified numeric release version selects the original six tools for releases before 0.6.0 and seven tools including `get_message_context` from 0.6.0 onward.
 For those newer releases, it also follows an actual search hit to the adjacent approval and verified specification attachment.
+From 0.7.0 onward, it separately launches the packaged fictional Telegram export, follows its proposal to the approval, and checks unsupported media with broken unrelated WeChat configuration.
+This explicit SDK launch does not change the bundle's default installed WeChat entry.
 The check prints the observed tool count; the immutable 0.4.0 example above still expects six.
 It does not read an actual account.
 Review the archive inventory and `server.json` before uploading.

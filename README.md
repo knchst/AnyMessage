@@ -2,11 +2,11 @@
 
 Ask your chats. Get answers with sources.
 
-Give Codex, Claude, or Cursor read-only access to local WeChat conversations and cached attachments through MCP.
+Give Codex, Claude, or Cursor read-only access to local WeChat conversations or a Telegram Desktop JSON export through MCP.
 Ask what changed in a project, which decisions were approved, or what still needs confirmation.
 Your AI does the analysis; AnyMessage returns messages, source IDs, coverage, and supported attachment content.
 
-Start with [a fictional project](#try-a-fictional-project), [three investigation recipes](docs/recipes.md), or [your own conversations](#install-and-set-up).
+Start with [a key-free Telegram export](#try-a-telegram-export-without-keys), [a fictional WeChat project](#try-a-fictional-project), or [your own WeChat conversations](#install-and-set-up).
 After trying it, [report whether it helped](docs/pilot.md).
 [简体中文](README.zh-CN.md)
 
@@ -16,18 +16,39 @@ Replay of the original 0.4.0 Atlas investigation. Playback timing is edited; thi
 [Watch the 30-second video](.github/assets/demo.mp4) or [try the demo](#try-a-fictional-project).
 
 AnyMessage provides a read-only stdio server for conversation listing, text history, exact-message context, conversation-scoped search, and local attachment reading.
-It reads local SQLCipher databases and committed WAL records without exporting a separate plaintext message archive.
+The default WeChat reader reads local SQLCipher databases and committed WAL records without creating a separate plaintext message archive.
+The Telegram reader reads one explicitly selected JSON file into an immutable text-only snapshot, without account keys or SQLCipher discovery.
 
 This project is an early implementation.
 The reader and optional key initialization have been exercised with WeChat 4.1.15 on Apple Silicon.
 Other versions require validation against their local schemas.
 There is no message sending, deletion, or cloud-history synchronization.
 
+## Try a Telegram export without keys
+
+AnyMessage 0.7.0 adds text search and exact-message context for Telegram Desktop JSON exports.
+Download the [fictional River export](examples/telegram-fictional.json) and run it with the latest source:
+
+```sh
+curl --fail --location https://raw.githubusercontent.com/knchst/AnyMessage/main/examples/telegram-fictional.json --output telegram-fictional.json
+uvx --from git+https://github.com/knchst/AnyMessage anymessage mcp --telegram-export "$PWD/telegram-fictional.json"
+```
+
+This starts a stdio MCP server. Connect an AI client using the [complete JSON or Codex TOML configuration](docs/telegram-export.md#connect-your-ai).
+It needs neither WeChat nor SQLCipher, account keys, or saved WeChat settings.
+Ask the client to search for `proposal` in the River project, then inspect that hit's neighboring records to find Maya's approval.
+For your own data, export a chat as JSON in Telegram Desktop and select that file instead.
+
+The file limit is 16 MiB. The reader fully loads the JSON in memory and retains no open file handle.
+Restart the server to load changed bytes.
+Export coverage can be incomplete. Rich-message bodies and Telegram media are unsupported; attachment tools report that explicitly.
+See [export instructions, actual MCP calls, coverage, and limits](docs/telegram-export.md).
+
 ## Try a fictional project
 
 The latest source includes a demo that reads fictional messages and an attachment through the real MCP tools.
 It needs SQLCipher, but no WeChat installation, account keys, or AI subscription.
-The demo requires AnyMessage 0.4.0 or later; Homebrew 0.3.1 does not include these commands.
+The WeChat demo requires AnyMessage 0.4.0 or later.
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run:
 
 ```sh
@@ -147,15 +168,18 @@ Exact-message context requires AnyMessage 0.6.0 or later.
 
 | Tool | Inputs | Result |
 | --- | --- | --- |
-| `status` | None | Source installation, account selection, database inventory, keys and schema readiness. No message bodies. |
+| `status` | None | Selected source readiness and coverage. WeChat reports accounts, keys, and schema readiness; Telegram reports snapshot counts and limits. No message bodies are returned. |
 | `list_conversations` | `limit` 1–200, `offset` 0–100000 | Newest-first local conversations, display names, summaries, and `next_offset`. |
-| `get_messages` | `conversation_id`, `limit` 1–200, optional `cursor`, `start_time`, `end_time` | Newest-first local messages across supported message shards, with `next_cursor`. |
+| `get_messages` | `conversation_id`, `limit` 1–200, optional `cursor`, `start_time`, `end_time` | Newest-first messages from the selected source, with `next_cursor`. |
 | `get_message_context` | `conversation_id`, `message_id`, optional `before` and `after` 0–50 each, default 3 | Exact anchor and nearest surrounding local records, oldest first, with `anchor_index` and `has_more_before` / `has_more_after`. |
 | `search_messages` | Literal `query`, exactly one of `conversation_id` or `conversation_ids` with 1–8 distinct ids, `limit` 1–200, `scan_limit` 1–10000, optional `cursor`, `start_time`, `end_time` | Newest-first decoded text matches across the selection, shared scanned count, coverage, and continuation. |
-| `list_attachments` | `conversation_id`, `message_id` | Message-bound attachment descriptors, separate image variants, and local cache availability. |
-| `read_attachment` | `conversation_id`, `message_id`, `attachment_id`, optional `offset`, `limit`, `as_binary` | Verified document text, a native MCP image, or an embedded binary resource, with metadata and continuation. |
+| `list_attachments` | `conversation_id`, `message_id` | WeChat attachment descriptors and local availability. Telegram returns an explicit unsupported result. |
+| `read_attachment` | `conversation_id`, `message_id`, `attachment_id`, optional `offset`, `limit`, `as_binary` | Verified WeChat attachment content. Telegram returns an unsupported error without opening media. |
 
-`get_messages`, `get_message_context`, and search hits return row-derived `attachments` metadata without looking up files.
+The following attachment, identity, cursor, and database details describe WeChat.
+Telegram uses the same input schemas with [source-specific identity, coverage, and cursor semantics](docs/telegram-export.md#source-contract).
+
+`get_messages`, `get_message_context`, and WeChat search hits return row-derived `attachments` metadata without looking up files.
 Call `list_attachments` with the message id to check availability, then pass its attachment id to `read_attachment`.
 Extracted document pages are available as native MCP text and in the structured result's `text` field.
 PDF, DOCX, XLSX, PPTX, UTF-8 text, and BOM-marked UTF-16 text have bounded text views.
@@ -194,7 +218,7 @@ Unsupported non-text records are counted separately.
 History, context, and search report checked shards and `snapshot_consistency="per_query"`; each SQL query can reflect a separate committed state.
 Local decoded text coverage does not establish complete cloud history.
 
-## Configuration
+## WeChat configuration
 
 Setup stores path and account references in `~/Library/Application Support/AnyMessage/config.json`, with mode 0600.
 Key bytes stay in their private manifest.
@@ -240,7 +264,7 @@ An unwrapped database mapping is also accepted.
 Use an owner-only directory and run `chmod 600` on the manifest.
 Never commit the manifest or real database files.
 
-## Limits
+## WeChat limits
 
 Only `message/message_N.db` message shards are supported.
 Business-account shards, video and voice decoding, nested forwarded attachments, sending, and global history indexing are not implemented.
@@ -265,7 +289,7 @@ uv build
 python3 scripts/check_publication.py --archive dist/*.whl dist/*.tar.gz
 ```
 
-The default suite uses only synthetic data, including CLI onboarding, configuration preservation, stdio and loopback HTTP round trips, real SQLCipher-encrypted fixtures, compressed text, multiple shards, pagination ties, literal search, committed WAL reads, rejected writes, attachment integrity and path checks, document extraction, V2 image decoding, and native text, image, and binary results over both MCP transports.
+The default suite uses only synthetic data, including Telegram parsing, snapshot cursors and context, CLI onboarding, configuration preservation, stdio and loopback HTTP round trips, real SQLCipher-encrypted fixtures, compressed text, multiple shards, pagination ties, literal search, committed WAL reads, rejected writes, attachment integrity and path checks, document extraction, V2 image decoding, and native text, image, and binary results over both MCP transports.
 See [CONTRIBUTING.md](CONTRIBUTING.md), [the architecture](docs/architecture.md), and [the database research notes](docs/wechat-research.md).
 
 ## License

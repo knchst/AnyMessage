@@ -1,7 +1,8 @@
 # AnyMessage architecture
 
 An agent calls a small MCP tool through stdio or an explicitly started loopback Streamable HTTP server.
-The tool selects the registered WeChat source and returns structured metadata.
+At startup, `create_server()` captures one reader and its seven tool closures return that reader's structured metadata.
+WeChat remains the default; only `mcp --telegram-export PATH` selects the offline export reader.
 Attachment reads also return native MCP text, image, or embedded binary content.
 The WeChat source owns account discovery, key validation, schema checks, SQLCipher queries, message decoding, and cross-shard ordering.
 The reader sends fixed read-only SQL and the selected database key to SQLCipher through stdin.
@@ -17,10 +18,33 @@ The reader sends fixed read-only SQL and the selected database key to SQLCipher 
 `wechat.py` owns account and database access, history, and exact message rehydration.
 `attachments.py` owns immutable `AttachmentRef` values, row-derived metadata, attachment indexes, file checks, image decoding, and document extraction.
 `server.py` adapts attachment results to MCP content blocks.
-The `sources` registry in `server.py` identifies the implemented source without introducing an unused adapter hierarchy.
-Source status distinguishes account selection, installation prerequisites, key problems, schema incompatibility, and readiness.
+`server.py` captures a concrete `WeChat` or `TelegramExport` reader without an adapter hierarchy or per-call source routing.
+WeChat status distinguishes account selection, installation prerequisites, key problems, schema incompatibility, and readiness.
 
-## Preserve message ordering and coverage
+## Load a Telegram snapshot
+
+`telegram_export.py` owns a fully loaded, immutable snapshot with no database, retained file handle, or reload task.
+Construction validates one regular UTF-8 JSON file, optionally with a BOM, capped at 16 MiB before and during reading.
+The input cap does not bound process memory. The decoded JSON tree can occupy much more memory than its file.
+Both joined `chats.list` and `left_chats.list` are normalized; unrelated account sections are discarded.
+Each chat has a chronological tuple of frozen message records, an immutable numeric-ID-to-offset map, and a set of undated unsupported IDs.
+No media paths or raw JSON objects remain in those records.
+
+History bounds each selected chat with bisect and iterates backwards.
+Search merges at most eight selected iterators by descending `(timestamp, message_number, qualified_chat_id)` with one shared scan budget.
+Context resolves the exact chat-local ID in its map and slices only the bounded chronological neighbors.
+Source-specific cursors bind exact snapshot bytes, canonical selection, date bounds, and query or history mode.
+They resolve to actual dated records before continuation. Byte-identical reloads permit continuation; changed bytes reject it.
+Source loading bypasses `Settings.load()`, SQLCipher resolution, and WeChat discovery entirely.
+The seven input schemas and default installed launch arguments are unchanged.
+
+Classic text strings and flat entity arrays are searchable.
+Opaque `rich_message` bodies remain dated unsupported rows. Compact undated unsupported rows are counted outside chronology.
+Service sender identity comes only from `actor_id` and `actor`, without generating text from actions.
+Media tools validate the exact message pair and report unsupported without filesystem checks or reads.
+See [the export contract](telegram-export.md#source-contract) for coverage, identity, and result fields.
+
+## Preserve WeChat message ordering and coverage
 
 The stable message identity is `(conversation_id, id)`, where `id` contains the shard's relative path and `local_id`.
 Different conversation tables can reuse the same `local_id` in one shard.
@@ -63,7 +87,7 @@ Search results retain the singular coverage label for singleton scopes and use `
 Results echo the canonical selection and date bounds, checked shards, and per-query consistency.
 `truncated` means a cursor remains; `incomplete` also includes decoding failures.
 
-## Read an exact message neighborhood
+## Read an exact WeChat message neighborhood
 
 `get_message_context` validates one conversation/message pair and strict `before` and `after` counts of 0–50 before account access.
 Message IDs retain the existing shard matcher and discovered spelling, including zero padding.

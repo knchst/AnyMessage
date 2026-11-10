@@ -199,6 +199,7 @@ def main(argv: list[str] | None = None) -> int:
     mcp = commands.add_parser("mcp", help="Run the MCP server or manage local clients")
     mcp.add_argument("--transport", choices=("stdio", "streamable-http"), default="stdio")
     mcp.add_argument("--port", type=int, default=8765, help="Loopback HTTP port; default 8765")
+    mcp.add_argument("--telegram-export", type=Path, help="Read one Telegram Desktop JSON snapshot instead of WeChat; text only")
     actions = mcp.add_subparsers(dest="mcp_action")
     add = actions.add_parser("add", help="Register a local client")
     add.add_argument("client", choices=[*CLIENTS, "grokbot"])
@@ -212,6 +213,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.status and args.command_name:
         parser.error("--status cannot be combined with a subcommand")
+    if args.command_name == "mcp" and args.telegram_export is not None and args.mcp_action is not None:
+        parser.error("--telegram-export selects a running server, not mcp add/config. Use the manual Telegram MCP configuration in docs/telegram-export.md.")
     try:
         if args.status:
             status = WeChat().status()
@@ -260,7 +263,8 @@ def main(argv: list[str] | None = None) -> int:
         port = args.port if args.command_name == "mcp" else 8765
         if not 1 <= port <= 65535:
             parser.error("--port must be between 1 and 65535")
-        create_server(port=port).run(transport=transport)
+        export = args.telegram_export if args.command_name == "mcp" else None
+        create_server(port=port, telegram_export=export).run(transport=transport)
         return 0
     except (OSError, ValueError, SourceError, subprocess.SubprocessError) as error:
         if isinstance(error, json.JSONDecodeError):

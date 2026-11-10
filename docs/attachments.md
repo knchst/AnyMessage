@@ -1,6 +1,12 @@
 # Attachment tool reference
 
-All attachment tools use the selected local WeChat account.
+The following format and cache reference describes the default WeChat source.
+For `mcp --telegram-export PATH`, both attachment tools validate the exact conversation/message pair and report `unsupported`.
+Listing returns no invented attachment IDs. Reading returns a metadata-only MCP error with `content_verified=false`.
+Telegram media paths are never opened, including when a message has a searchable caption.
+See [the Telegram export contract](telegram-export.md#media) and [media follow-up Issue #29](https://github.com/knchst/AnyMessage/issues/29).
+
+WeChat attachment tools use the selected local account.
 They accept message and attachment ids, never arbitrary paths or URLs.
 They do not send messages, download content, run OCR, or create a plaintext archive.
 
