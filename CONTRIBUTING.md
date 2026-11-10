@@ -6,6 +6,9 @@ Use synthetic data to reproduce it.
 Keep actual messages, account identifiers, database files, keys, screenshots, debugger captures, and local configuration out of issues and patches.
 See [SECURITY.md](SECURITY.md) for vulnerabilities.
 
+For trial feedback, use [the trial guide](docs/pilot.md) and its public issue form.
+Maintainers can capture read-only GitHub growth snapshots with `python3 scripts/measure_growth.py`; the guide explains the 14-day traffic limits.
+
 ## Set up development
 
 Install Python 3.11 or later, [uv](https://docs.astral.sh/uv/), and SQLCipher.

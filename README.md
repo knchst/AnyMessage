@@ -7,6 +7,7 @@ Ask what changed in a project, which decisions were approved, or what still need
 Your AI does the analysis; AnyMessage returns messages, source IDs, coverage, and supported attachment content.
 
 Start with [a fictional project](#try-a-fictional-project), [three investigation recipes](docs/recipes.md), or [your own conversations](#install-and-set-up).
+After trying it, [report whether it helped](docs/pilot.md).
 [简体中文](README.zh-CN.md)
 
 ![Replay of the fictional Atlas investigation](.github/assets/demo.gif)

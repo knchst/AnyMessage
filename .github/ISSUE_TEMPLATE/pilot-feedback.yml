@@ -1,0 +1,55 @@
+name: Trial feedback
+description: Tell us whether AnyMessage helped you investigate a conversation.
+title: "[Trial] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feedback in English, 日本語, or 中文 is welcome.
+        This report is public. Use fictional or redacted examples and leave out messages, account identifiers, keys, files, and personal paths.
+        We want to understand first use and whether you return for a different investigation.
+  - type: dropdown
+    id: source
+    attributes:
+      label: What did you try?
+      options:
+        - Fictional demo only
+        - My local WeChat data
+        - Both
+    validations:
+      required: true
+  - type: dropdown
+    id: first-result
+    attributes:
+      label: Did you get an answer you could check against messages?
+      options:
+        - Yes, without individual setup help
+        - Yes, with individual setup help
+        - I connected but could not verify a useful answer
+        - I could not finish setup
+    validations:
+      required: true
+  - type: dropdown
+    id: reuse
+    attributes:
+      label: Did you use it for a different investigation within 14 days?
+      options:
+        - "Yes"
+        - No, and 14 days have passed
+        - Not yet, fewer than 14 days have passed
+        - I only tried the fictional demo
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Versions
+      description: macOS, AI client, AnyMessage, and WeChat if you used live data. Do not paste raw diagnostic output.
+      placeholder: macOS 26, Codex, AnyMessage version, WeChat version
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What were you trying to find out?
+      description: Describe the outcome, where you got stuck, and what would make you use it again. Use a fictional example if the project is private.
+    validations:
+      required: true
