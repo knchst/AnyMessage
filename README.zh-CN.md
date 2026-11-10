@@ -59,6 +59,7 @@ anymessage setup
 ```
 
 安装会包含 Python 和 SQLCipher。
+支持 MCPB 0.4 和 UV 的宿主可参考[分发说明](docs/distribution.md)。仍需 SQLCipher 和明确的账号设置；格式验证不代表已在某个桌面宿主完成安装验证。
 设置会优先复用已有的有效密钥，默认注册 Codex；完成后需要重启或重新加载 MCP 连接。
 没有密钥时，需要阅读[首次设置说明](docs/wechat-setup.md)，通过明确授权的临时微信副本获取。
 该步骤可能需要手机确认或登录。

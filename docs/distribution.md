@@ -1,0 +1,71 @@
+# MCPB distribution and Registry publication
+
+The Homebrew installation remains the tested user setup path.
+An MCPB package provides the same released source for hosts supporting MCPB manifest 0.4 and its UV runtime.
+It requires Apple Silicon macOS 14 or later, SQLCipher, and explicit account setup before reading personal history.
+The host must provide a working UV launcher and Python 3.11 or later, or manage those runtimes itself.
+The first launch can download Python dependencies and build the local project.
+It does not fetch the unrelated `anymessage` package from PyPI, capture keys, or register an account.
+
+The package launches normal `mcp` mode using saved configuration references.
+Use the [fictional demo](demo.md) separately before connecting an account.
+Manifest validation and an MCP SDK check establish artifact behavior; they do not establish installation support in a particular desktop host.
+Keep each host's actual installation results separate from these checks.
+
+## Build the release pair
+
+Use Python 3.11 or later and the already published source archive.
+Obtain its expected SHA-256 from the reviewed release record.
+Use a new output directory; the builder refuses an existing directory.
+
+```sh
+python3 scripts/build_mcpb.py downloads/anymessage-0.4.0.tar.gz \
+  --sha256 721fe672a8d1dd912faae5c61b615a000fdb35bf56d8483f96efc2a4b4d75c46 \
+  --out dist/registry-0.4.0
+```
+
+The builder derives the version from the verified archive and retains its project, local lock, bootstrap resources, licenses, documentation, and linked assets.
+It emits `anymessage-0.4.0.mcpb` and `server.json` referring to that artifact's SHA-256 and exact GitHub Release URL.
+It copies no working checkout or virtual environment.
+If any command fails, do not upload its output.
+
+Check the actual emitted files with the official MCPB CLI and publisher, then run the isolated MCP check:
+
+```sh
+unzip -p dist/registry-0.4.0/anymessage-0.4.0.mcpb manifest.json > dist/registry-0.4.0/manifest.json
+npx --yes @anthropic-ai/mcpb@2.1.2 validate dist/registry-0.4.0/manifest.json
+mcp-publisher validate dist/registry-0.4.0/server.json
+uv run --frozen python scripts/check_mcpb.py dist/registry-0.4.0/server.json --tag v0.4.0 --runtime
+```
+
+Use a verified official `mcp-publisher` release.
+The runtime check needs SQLCipher and a working `uv` command; `--uv /absolute/path/to/uv` selects another launcher.
+It extracts into a temporary path containing spaces, sets explicit nonexistent account references, checks six read-only tools and unconfigured status, and reads eight synthetic demo messages.
+It does not read an actual account.
+Review the archive inventory and `server.json` before uploading.
+
+## Publish the verified pair
+
+Upload exactly the reviewed pair to its existing release without overwriting assets:
+
+```sh
+gh release upload v0.4.0 dist/registry-0.4.0/anymessage-0.4.0.mcpb dist/registry-0.4.0/server.json --repo knchst/AnyMessage
+gh workflow run publish-registry.yml --repo knchst/AnyMessage --ref main -f tag=v0.4.0
+```
+
+The manual workflow downloads the existing pair, checks its identity, version, launch contract and actual hash, and validates it with the pinned publisher before authentication.
+It then publishes only Registry metadata under `io.github.knchst/anymessage` using GitHub OIDC.
+Its permissions are `contents: read` and `id-token: write`; it has no dedicated PAT, PyPI credential, release-write permission, or pull-request trigger.
+The publisher is pinned and its Sigstore bundle is verified against the upstream release workflow.
+
+Read the public Registry record after publication and compare its version, package URL and hash with the reviewed pair.
+Until that readback succeeds, report publication as unverified.
+For a partial upload, compare any existing asset with the reviewed local bytes and upload only the missing file.
+Never overwrite a published artifact.
+If publication returns an ambiguous error or a duplicate version, read the exact Registry version first; matching metadata proves the earlier publication succeeded.
+Otherwise stop and investigate before publishing a new version.
+Registry versions and metadata are immutable after publication.
+
+PyPI publication remains separate work in [Issue #15](https://github.com/knchst/AnyMessage/issues/15).
+The PyPI name `anymessage` belongs to an unrelated email SDK.
+See the official [MCPB specification](https://github.com/modelcontextprotocol/mcpb/blob/main/MANIFEST.md), [Registry package types](https://modelcontextprotocol.io/registry/package-types), and [OIDC publication guide](https://github.com/modelcontextprotocol/registry/blob/main/docs/modelcontextprotocol-io/github-actions.mdx).
